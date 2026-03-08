@@ -172,51 +172,41 @@ async function startServer() {
     }
 
     try {
-      const apiKey = process.env.GOOGLE_PLACES_API || process.env.WCT_NET_TO_SELLER_API;
+      const attomKey = process.env.ATTOM_API;
+      if (!attomKey) {
+        return res.status(500).json({ error: "ATTOM API key is not configured." });
+      }
+
+      let address1 = "";
+      let address2 = "";
+
+      if (city && state) {
+        address2 = `${city}, ${state}`;
+        if (zip) address2 += ` ${zip}`;
+        const cityIndex = addressFull.indexOf(city);
+        if (cityIndex > 0) {
+          let part1 = addressFull.substring(0, cityIndex).trim();
+          while (part1.endsWith(',')) part1 = part1.slice(0, -1).trim();
+          address1 = part1;
+        } else {
+          const parts = addressFull.split(',');
+          address1 = parts[0].trim();
+        }
+      } else {
+        const firstCommaIndex = addressFull.indexOf(',');
+        if (firstCommaIndex !== -1) {
+          address1 = addressFull.substring(0, firstCommaIndex).trim();
+          address2 = addressFull.substring(firstCommaIndex + 1).trim();
+        } else {
+          address1 = addressFull;
+        }
+      }
       
-      if (!apiKey) {
-        console.warn("GOOGLE_PLACES_API not configured, falling back to sample data.");
-        return res.json({ 
-          success: true, 
-          message: "Property lookup successful (Sample Data).",
-          data: {
-            isOhio: true,
-            ownerName: "John & Jane Doe",
-            parcelNumber: "123-456-789-000",
-            annualTaxes: 4500.50
-          }
-        });
+      address2 = address2.replace(', USA', '').replace(', US', '').trim();
+
+      if (!address1 || !address2) {
+        return res.json({ success: false, message: "Could not parse address into street and city/state." });
       }
-
-      if (apiKey.startsWith('http')) {
-         const apiResponse = await fetch(apiKey, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({ address: addressFull, placeId, lat, lng }),
-          signal: AbortSignal.timeout(parseInt(process.env.WCT_API_TIMEOUT_MS || "5000"))
-        });
-
-        if (!apiResponse.ok) throw new Error(`API responded with status: ${apiResponse.status}`);
-        const result = await apiResponse.json();
-        
-        return res.json({
-          success: true,
-          data: {
-            isOhio: true,
-            ownerName: result.ownerName || result.owner || "",
-            parcelNumber: result.parcelNumber || result.parcelId || "",
-            annualTaxes: result.annualTaxes || result.taxes || 0
-          }
-        });
-      }
-
-      if (!placeId) throw new Error("Place ID is required for Google Places lookup");
-
-      const googleUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_address,address_components,geometry&key=${apiKey}`;
-      const apiResponse = await fetch(googleUrl);
-      const data = await apiResponse.json();
-
-      if (data.status !== 'OK') throw new Error(`Google Places API error: ${data.status}`);
 
       let ownerName = "";
       let parcelNumber = "";
@@ -228,70 +218,82 @@ async function startServer() {
       let taxYear = new Date().getFullYear() - 1;
       let priorSalePrice = 0;
       let priorSaleDate = "";
+      let comps: any[] = [];
+      let avmValue = 0;
+      let avmLow = 0;
+      let avmHigh = 0;
 
-      const attomKey = process.env.ATTOM_API;
-      if (attomKey) {
-        try {
-          let address1 = "";
-          let address2 = "";
+      const attomUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/expandedprofile?address1=${encodeURIComponent(address1)}&address2=${encodeURIComponent(address2)}`;
+      const attomResponse = await fetch(attomUrl, { headers: { 'apikey': attomKey, 'Accept': 'application/json' } });
 
-          if (city && state) {
-            address2 = `${city}, ${state}`;
-            if (zip) address2 += ` ${zip}`;
-            const cityIndex = addressFull.indexOf(city);
-            if (cityIndex > 0) {
-              let part1 = addressFull.substring(0, cityIndex).trim();
-              while (part1.endsWith(',')) part1 = part1.slice(0, -1).trim();
-              address1 = part1;
-            } else {
-              const parts = addressFull.split(',');
-              address1 = parts[0].trim();
-            }
-          } else {
-            const firstCommaIndex = addressFull.indexOf(',');
-            if (firstCommaIndex !== -1) {
-              address1 = addressFull.substring(0, firstCommaIndex).trim();
-              address2 = addressFull.substring(firstCommaIndex + 1).trim();
-            } else {
-              address1 = addressFull;
-            }
-          }
-          
-          address2 = address2.replace(', USA', '').replace(', US', '').trim();
-
-          if (address1 && address2) {
-            const attomUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/expandedprofile?address1=${encodeURIComponent(address1)}&address2=${encodeURIComponent(address2)}`;
-            const attomResponse = await fetch(attomUrl, { headers: { 'apikey': attomKey, 'Accept': 'application/json' } });
-  
-            if (attomResponse.ok) {
-              const attomData = await attomResponse.json();
-              const property = attomData.property?.[0];
-              
-              if (property) {
-                const owner1 = property.assessment?.owner?.owner1;
-                if (owner1?.fullName) ownerName = owner1.fullName;
-                else if (owner1?.fullname) ownerName = owner1.fullname;
-                else if (owner1?.firstNameAndMi && owner1?.lastName) ownerName = `${owner1.firstNameAndMi} ${owner1.lastName}`;
-                else if (owner1?.firstname && owner1?.lastname) ownerName = `${owner1.firstname} ${owner1.lastname}`;
-                
-                if (property.identifier?.apn) parcelNumber = property.identifier.apn;
-                if (property.assessment?.tax?.taxAmt) annualTaxes = property.assessment.tax.taxAmt;
-                if (property.assessment?.tax?.taxYear) taxYear = parseInt(property.assessment.tax.taxYear);
-                if (property.summary?.propclass) propertyType = property.summary.propclass;
-                if (property.building?.rooms?.beds) beds = property.building.rooms.beds;
-                if (property.building?.rooms?.bathstotal) baths = property.building.rooms.bathstotal;
-                if (property.building?.size?.universalsize) sqft = property.building.size.universalsize;
-                if (property.sale?.amount?.saleAmt) priorSalePrice = property.sale.amount.saleAmt;
-                if (property.sale?.saleTransDate) priorSaleDate = property.sale.saleTransDate;
-              }
-            }
-          }
-        } catch (attomError) {
-          console.error("ATTOM API Lookup Failed:", attomError);
-        }
+      if (!attomResponse.ok) {
+        throw new Error(`ATTOM API responded with status: ${attomResponse.status}`);
       }
 
-      res.json({
+      const attomData = await attomResponse.json();
+      const property = attomData.property?.[0];
+      
+      if (property) {
+        const owner1 = property.assessment?.owner?.owner1;
+        if (owner1?.fullName) ownerName = owner1.fullName;
+        else if (owner1?.fullname) ownerName = owner1.fullname;
+        else if (owner1?.firstNameAndMi && owner1?.lastName) ownerName = `${owner1.firstNameAndMi} ${owner1.lastName}`;
+        else if (owner1?.firstname && owner1?.lastname) ownerName = `${owner1.firstname} ${owner1.lastname}`;
+        
+        if (property.identifier?.apn) parcelNumber = property.identifier.apn;
+        if (property.assessment?.tax?.taxAmt) annualTaxes = property.assessment.tax.taxAmt;
+        if (property.assessment?.tax?.taxYear) taxYear = parseInt(property.assessment.tax.taxYear);
+        if (property.summary?.propclass) propertyType = property.summary.propclass;
+        if (property.building?.rooms?.beds) beds = property.building.rooms.beds;
+        if (property.building?.rooms?.bathstotal) baths = property.building.rooms.bathstotal;
+        if (property.building?.size?.universalsize) sqft = property.building.size.universalsize;
+        if (property.sale?.amount?.saleAmt) priorSalePrice = property.sale.amount.saleAmt;
+        if (property.sale?.saleTransDate) priorSaleDate = property.sale.saleTransDate;
+
+        try {
+          const compsUrl = `https://api.gateway.attomdata.com/property/v2/salescomparables/address/${encodeURIComponent(address1)}/${encodeURIComponent(city || '')}/US/${encodeURIComponent(state || '')}/${encodeURIComponent(zip || '')}?searchType=Radius&minComps=1&maxComps=5&miles=2`;
+          const compsResponse = await fetch(compsUrl, { headers: { 'apikey': attomKey, 'Accept': 'application/json' } });
+          if (compsResponse.ok) {
+            const compsData = await compsResponse.json();
+            const properties = compsData.RESPONSE_GROUP?.RESPONSE?.RESPONSE_DATA?.PROPERTY_INFORMATION_RESPONSE_ext?.SUBJECT_PROPERTY_ext?.PROPERTY || [];
+            const filteredProperties = properties.filter((p: any) => p.COMPARABLE_PROPERTY_ext);
+            comps = filteredProperties.map((p: any) => {
+              const comp = p.COMPARABLE_PROPERTY_ext.PROPERTY;
+              const addressObj = comp.address || {};
+              const addressStr = addressObj.oneLine || 
+                              `${addressObj.line1 || ''}, ${addressObj.locality || ''}, ${addressObj.countrySubd || ''} ${addressObj.postal1 || ''}`.replace(/^[,\s]+|[,\s]+$/g, '');
+              return {
+                address: addressStr,
+                salePrice: comp.sale?.amount?.saleAmt || 0,
+                saleDate: comp.sale?.saleTransDate || '',
+                beds: comp.building?.rooms?.beds || 0,
+                baths: comp.building?.rooms?.bathstotal || 0,
+                sqft: comp.building?.size?.universalsize || 0
+              };
+            });
+          }
+        } catch (compsError) {
+          console.error("ATTOM Comps Lookup Failed:", compsError);
+        }
+
+        try {
+          const avmUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/avm/snapshot?address1=${encodeURIComponent(address1)}&address2=${encodeURIComponent(address2)}`;
+          const avmResponse = await fetch(avmUrl, { headers: { 'apikey': attomKey, 'Accept': 'application/json' } });
+          if (avmResponse.ok) {
+            const avmData = await avmResponse.json();
+            const avm = avmData.property?.[0]?.avm?.amount;
+            avmValue = avm?.value || 0;
+            avmLow = avm?.low || 0;
+            avmHigh = avm?.high || 0;
+          }
+        } catch (avmError) {
+          console.error("ATTOM AVM Lookup Failed:", avmError);
+        }
+      } else {
+        return res.json({ success: false, message: "Could not find property records." });
+      }
+
+      return res.json({
         success: true,
         data: {
           isOhio: true,
@@ -304,13 +306,17 @@ async function startServer() {
           sqft,
           taxYear,
           priorSalePrice,
-          priorSaleDate
+          priorSaleDate,
+          comps,
+          avmValue,
+          avmLow,
+          avmHigh
         }
       });
 
     } catch (error) {
       console.error("Property Lookup API Error:", error);
-      res.json({ success: false, message: "We could not auto-load county records for this address." });
+      res.json({ success: false, message: "Could not find property records." });
     }
   });
 
@@ -446,7 +452,7 @@ async function startServer() {
       data.commissionValue, data.commissionAmount, data.sellerCreditsTotal, JSON.stringify(data.mortgagePayoffs),
       data.mortgagePayoffsTotal, data.hoaMonthly, data.hoaTransferFee, JSON.stringify(data.otherCosts), data.otherCostsTotal,
       data.estimatedClosingCostsTotal, data.estimatedTitlePremium || 0, data.estimatedTransferTax, data.estimatedTaxProration,
-      data.estimatedNetProceeds || data.netProceeds || 0, JSON.stringify(data.inputs), data.calcJson, shareToken
+      data.estimatedNetProceeds || data.netProceeds || 0, JSON.stringify(data.inputs), JSON.stringify(data.calcJson), shareToken
     );
 
     res.json({ id, shareToken });

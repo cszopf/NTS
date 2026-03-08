@@ -10,7 +10,7 @@ import { AuthModal } from '../components/AuthModal';
 import { SmartTechModal } from '../components/SmartTechModal';
 import { GeminiAssistant } from '../components/GeminiAssistant';
 import { motion, AnimatePresence } from 'motion/react';
-import { Share2, Mail, Edit2, CheckCircle2, Save } from 'lucide-react';
+import { Share2, Mail, Edit2, CheckCircle2, Save, Sparkles } from 'lucide-react';
 
 export default function Results() {
   const { estimateId } = useParams();
@@ -21,6 +21,8 @@ export default function Results() {
   const [showAuth, setShowAuth] = useState(false);
   const [showSmartModal, setShowSmartModal] = useState(false);
   const [authSuccess, setAuthSuccess] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
 
   useEffect(() => {
     const fetchEstimate = async () => {
@@ -43,6 +45,31 @@ export default function Results() {
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleGenerateSummary = async () => {
+    setGeneratingSummary(true);
+    try {
+      const res = await fetch('/api/net-to-seller/generate-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          calcJson: estimate.calcJson,
+          address: estimate.addressFull
+        })
+      });
+      const data = await res.json();
+      if (data.summary) {
+        setAiSummary(data.summary);
+      } else {
+        setError("Failed to generate summary.");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Failed to generate summary.");
+    } finally {
+      setGeneratingSummary(false);
+    }
   };
 
   if (loading) return (
@@ -127,25 +154,80 @@ export default function Results() {
                   </div>
 
                   <div className="space-y-1 flex-grow">
-                    <WCTSummaryRow label="Sale Price" value={salePrice} />
-                    <WCTSummaryRow label="Real Estate Commission" value={-commission} />
-                    <WCTSummaryRow label="Mortgage Payoffs" value={-payoffs} />
-                    <WCTSummaryRow label="Seller Credits" value={-credits} />
+                    <WCTSummaryRow label="Sale Price" value={salePrice} description="The final agreed-upon price for the property." />
+                    <WCTSummaryRow label="Real Estate Commission" value={-commission} description="Fees paid to real estate agents for their services in the sale." />
+                    <WCTSummaryRow label="Mortgage Payoffs" value={-payoffs} description="The amount required to pay off the existing mortgage(s) on the property." />
+                    <WCTSummaryRow label="Seller Credits" value={-credits} description="Credits given by the seller to the buyer to cover closing costs or repairs." />
                     <WCTSummaryRow 
                       label="Closing Costs" 
                       value={-closingCosts} 
                       details={closingDetails}
+                      description="Fees associated with closing the transaction, such as recording fees, settlement fees, etc."
                     />
-                    <WCTSummaryRow label="Title Insurance (OTIRB)" value={-titlePremium} />
-                    <WCTSummaryRow label="Transfer Tax" value={-transferTax} />
-                    <WCTSummaryRow label="Tax Proration" value={-taxProration} />
-                    {hoaTransfer > 0 && <WCTSummaryRow label="HOA Transfer Fee" value={-hoaTransfer} />}
-                    {otherCosts > 0 && <WCTSummaryRow label="Other Costs" value={-otherCosts} />}
-                    <WCTSummaryRow label="Net Proceeds" value={netProceeds} isTotal />
+                    <WCTSummaryRow label="Title Insurance (OTIRB)" value={-titlePremium} description="Insurance policy protecting the owner and lender against title defects." />
+                    <WCTSummaryRow label="Transfer Tax" value={-transferTax} description="Tax paid to the county or state for transferring the property title." />
+                    <WCTSummaryRow label="Tax Proration" value={-taxProration} description="Adjustment for property taxes to ensure each party pays for the days they owned the property." />
+                    {hoaTransfer > 0 && <WCTSummaryRow label="HOA Transfer Fee" value={-hoaTransfer} description="Fee charged by the Homeowners Association to transfer ownership records." />}
+                    {otherCosts > 0 && <WCTSummaryRow label="Other Costs" value={-otherCosts} description="Any additional costs or fees associated with the sale." />}
+                    <WCTSummaryRow label="Net Proceeds" value={netProceeds} isTotal description="The estimated amount of money the seller will receive after all costs and payoffs." />
                   </div>
                 </WCTCard>
               );
             })}
+          </div>
+
+          {/* Selected Comps Section */}
+          {calcJson.selectedComps && calcJson.selectedComps.length > 0 && (
+            <div className="mb-12 max-w-3xl mx-auto">
+              <h3 className="text-xl font-bold text-[#004EA8] mb-4">Market Comparables</h3>
+              <div className="space-y-4">
+                {calcJson.selectedComps.map((comp: any, idx: number) => (
+                  <WCTCard key={idx} className="p-4 border border-[#A2B2C8]/30">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-bold text-[#004EA8]">{comp.Address}</p>
+                        <p className="text-sm text-[#A2B2C8]">Sold: {comp.SaleDate} • {comp.SqFt} SqFt</p>
+                        <p className="text-sm text-[#A2B2C8]">Beds: {comp.Beds} • Baths: {comp.Baths}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-green-600">
+                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(comp.SalePrice)}
+                        </p>
+                      </div>
+                    </div>
+                  </WCTCard>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Gemini AI Summary Section */}
+          <div className="mb-12 max-w-3xl mx-auto">
+            <WCTCard className="p-6 bg-[#004EA8]/5 border border-[#004EA8]/10">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-[#004EA8] flex items-center justify-center text-white">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <h3 className="text-xl font-bold text-[#004EA8]">AI Email Summary</h3>
+              </div>
+              
+              {aiSummary ? (
+                <div className="bg-white p-4 rounded-xl border border-[#A2B2C8]/30">
+                  <p className="whitespace-pre-wrap text-gray-700">{aiSummary}</p>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-[#A2B2C8] mb-4">Generate a professional email summary of this estimate to send to your client.</p>
+                  <WCTButton 
+                    onClick={handleGenerateSummary} 
+                    disabled={generatingSummary}
+                    className="mx-auto"
+                  >
+                    {generatingSummary ? 'Generating...' : 'Generate Summary'}
+                  </WCTButton>
+                </div>
+              )}
+            </WCTCard>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12 max-w-3xl mx-auto">

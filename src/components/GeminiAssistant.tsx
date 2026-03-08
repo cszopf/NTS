@@ -32,7 +32,10 @@ export const GeminiAssistant: React.FC<GeminiAssistantProps> = ({ estimate }) =>
 
     try {
       // @ts-ignore - process.env is injected by the platform
-      const apiKey = process.env.GEMINI_API_KEY;
+      let apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (apiKey) {
+        apiKey = apiKey.replace(/^["']|["']$/g, '');
+      }
       if (!apiKey) {
         throw new Error("API Key not found");
       }

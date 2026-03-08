@@ -112,9 +112,9 @@ export const WCTAlert: React.FC<{ type: 'error' | 'warning' | 'info'; children: 
   );
 };
 
-export const WCTSummaryRow: React.FC<{ label: string; value: string | number; isTotal?: boolean; details?: { label: string; value: number }[] }> = ({ label, value, isTotal = false, details }) => {
+export const WCTSummaryRow: React.FC<{ label: string; value: string | number; isTotal?: boolean; details?: { label: string; value: number }[]; description?: string }> = ({ label, value, isTotal = false, details, description }) => {
   const [isOpen, setIsOpen] = React.useState(false);
-  const hasDetails = details && details.length > 0;
+  const hasDetails = (details && details.length > 0) || !!description;
 
   // Determine color based on value
   let valueColor = "text-[#004EA8]"; // Default blue
@@ -141,7 +141,12 @@ export const WCTSummaryRow: React.FC<{ label: string; value: string | number; is
       </div>
       {hasDetails && isOpen && (
         <div className="pl-8 pb-2 space-y-1">
-          {details.map((detail, idx) => (
+          {description && (
+            <div className="text-xs text-[#A2B2C8] italic mb-2 pr-4">
+              {description}
+            </div>
+          )}
+          {details && details.map((detail, idx) => (
             <div key={idx} className="flex justify-between text-sm text-[#A2B2C8]">
               <span>{detail.label}</span>
               <span className="text-red-600">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(-detail.value)}</span>

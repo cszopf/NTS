@@ -128,10 +128,17 @@ export default function NetToSeller() {
     commissionValue: '6',
     hoaMonthly: '0',
     hoaTransferFee: '0',
-    otherCosts: [] as { id: number; label: string; amount: string }[]
+    otherCosts: [] as { id: number; label: string; amount: string }[],
+    comps: [] as any[],
+    showComps: 'no',
+    selectedComps: [] as string[],
+    avmValue: 0,
+    avmLow: 0,
+    avmHigh: 0
   });
 
   const [autoPopulatedFields, setAutoPopulatedFields] = useState<Set<string>>(new Set());
+  const [expandedComps, setExpandedComps] = useState<Set<number>>(new Set());
 
   // Helper to format currency on blur
   const formatCurrencyInput = (value: string) => {
@@ -241,7 +248,11 @@ export default function NetToSeller() {
           parcelNumber: result.data.parcelNumber || '',
           annualTaxes: formattedTaxes,
           reissueCredit,
-          priorPolicyAmount
+          priorPolicyAmount,
+          comps: result.data.comps || [],
+          avmValue: result.data.avmValue || 0,
+          avmLow: result.data.avmLow || 0,
+          avmHigh: result.data.avmHigh || 0
         }));
 
         // Mark fields as auto-populated
@@ -393,6 +404,15 @@ export default function NetToSeller() {
                   onBlur={e => handleBlur('salePrice', e.target.value)}
                   required 
                 />
+                {(formData.avmLow > 0 && formData.avmHigh > 0) ? (
+                  <p className="text-[10px] text-emerald-600 font-bold -mt-3 pl-4 uppercase">
+                    AVM ESTIMATE ${Math.round(formData.avmLow / 1000)}k - ${Math.round(formData.avmHigh / 1000)}k
+                  </p>
+                ) : formData.avmValue > 0 && (
+                  <p className="text-[10px] text-emerald-600 font-bold -mt-3 pl-4 uppercase">
+                    AVM ESTIMATE {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(formData.avmValue)}
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <WCTInput 
                     label="Option 2 (Optional)" 
@@ -584,6 +604,72 @@ export default function NetToSeller() {
                 </WCTButton>
               </div>
             )}
+            
+            {formData.comps && formData.comps.length > 0 && (
+              <div className="space-y-6 pt-6 border-t border-[#A2B2C8]/10">
+                <WCTSelect 
+                  label="Would you like to see recent comps?" 
+                  value={formData.showComps} 
+                  onChange={e => setFormData({...formData, showComps: e.target.value})}
+                  options={[{value: 'no', label: 'No'}, {value: 'yes', label: 'Yes'}]}
+                />
+                
+                {formData.showComps === 'yes' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-[#1B2B4B]">Market Comps</h3>
+                    <div className="space-y-3">
+                      {formData.comps.map((comp, index) => (
+                        <div key={index} className="border border-[#A2B2C8]/20 rounded-xl p-4 bg-white">
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-start gap-3">
+                              <input 
+                                type="checkbox" 
+                                className="mt-1 w-4 h-4 text-[#E63946] rounded border-[#A2B2C8]/30 focus:ring-[#E63946]"
+                                checked={formData.selectedComps.includes(comp.address)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setFormData({...formData, selectedComps: [...formData.selectedComps, comp.address]});
+                                  } else {
+                                    setFormData({...formData, selectedComps: formData.selectedComps.filter(c => c !== comp.address)});
+                                  }
+                                }}
+                              />
+                              <div>
+                                <p className="font-medium text-[#1B2B4B]">{comp.address}</p>
+                                <div className="flex gap-4 mt-1 text-sm text-[#4A5568]">
+                                  <span>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(comp.salePrice)}</span>
+                                  <span>•</span>
+                                  <span>{comp.saleDate ? new Date(comp.saleDate).toLocaleDateString() : 'Unknown Date'}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => {
+                                const newExpanded = new Set(expandedComps);
+                                if (newExpanded.has(index)) newExpanded.delete(index);
+                                else newExpanded.add(index);
+                                setExpandedComps(newExpanded);
+                              }}
+                              className="text-sm text-[#0066CC] hover:underline"
+                            >
+                              {expandedComps.has(index) ? 'Hide Details' : 'Details'}
+                            </button>
+                          </div>
+                          {expandedComps.has(index) && (
+                            <div className="mt-4 pt-4 border-t border-[#A2B2C8]/10 flex gap-6 text-sm text-[#4A5568]">
+                              <div><span className="font-medium">Beds:</span> {comp.beds || '-'}</div>
+                              <div><span className="font-medium">Baths:</span> {comp.baths || '-'}</div>
+                              <div><span className="font-medium">Sqft:</span> {comp.sqft ? comp.sqft.toLocaleString() : '-'}</div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex justify-between pt-8">
               <WCTButton variant="outline" onClick={prevStep}><ChevronLeft className="w-4 h-4" /> Back</WCTButton>
               <WCTButton onClick={nextStep}>Next <ChevronRight className="w-4 h-4" /></WCTButton>
