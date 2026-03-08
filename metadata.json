@@ -1,0 +1,5 @@
+{
+  "name": "World Class Title Net to Seller",
+  "description": "A premium, mobile-first net sheet tool for sellers and agents to estimate proceeds for Ohio properties.",
+  "requestFramePermissions": ["geolocation"]
+}

@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Nunito+Sans:wght@400;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-montserrat: "Montserrat", sans-serif;
+  --font-nunito: "Nunito Sans", sans-serif;
+  
+  --color-wct-blue: #004EA8;
+  --color-wct-teal: #64CCC9;
+  --color-wct-light-blue: #B9D9EB;
+  --color-wct-slate: #A2B2C8;
+}
+
+@layer base {
+  body {
+    @apply font-nunito bg-white text-wct-blue antialiased;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-montserrat uppercase tracking-[1.5px] font-bold;
+  }
+
+  .font-subheader {
+    @apply font-montserrat font-normal normal-case tracking-normal;
+  }
+}
