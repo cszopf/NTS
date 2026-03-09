@@ -118,8 +118,9 @@ export default function Results() {
       });
       
       const imgData = canvas.toDataURL('image/png');
+      const isLandscape = scenarios.length === 3;
       const pdf = new jsPDF({
-        orientation: 'portrait',
+        orientation: isLandscape ? 'landscape' : 'portrait',
         unit: 'px',
         format: [canvas.width / 2, canvas.height / 2]
       });

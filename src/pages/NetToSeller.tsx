@@ -16,6 +16,7 @@ import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import Confetti from 'react-confetti';
 import { useWindowSize } from 'react-use';
+import { WCT_CONFIG } from '../constants/config';
 
 const ReissueModal = ({ isOpen, onClose, priorAmount }: { isOpen: boolean; onClose: () => void; priorAmount: string }) => {
   if (!isOpen) return null;
@@ -131,26 +132,30 @@ export default function NetToSeller() {
     isOhio: false,
     ownerName: '',
     parcelNumber: '',
-    annualTaxes: '',
+    annualTaxes: '$0.00',
     policyType: 'homeowner',
     reissueCredit: 'no',
-    priorPolicyAmount: '0',
+    priorPolicyAmount: '$0.00',
+    priorSaleDate: '',
     priorPolicyFile: null as File | null,
-    salePrice: '',
-    salePrice2: '',
-    salePrice3: '',
+    salePrice: '$0.00',
+    salePrice2: '$0.00',
+    salePrice3: '$0.00',
     closingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Default to 30 days from now
-    sellerConcessions: '0',
-    homeWarranty: '0',
-    repairCredits: '0',
-    otherCredits: '0',
+    sellerConcessions: '$0.00',
+    homeWarranty: '$0.00',
+    repairCredits: '$0.00',
+    otherCredits: '$0.00',
     hasMortgage: 'no',
-    mortgagePayoffs: [{ id: 1, lender: '', amount: '' }],
+    mortgagePayoffs: [{ id: 1, lender: '', amount: '$0.00' }],
     payingCommission: 'yes',
     commissionType: 'percent',
     commissionValue: '6',
-    hoaMonthly: '0',
-    hoaTransferFee: '0',
+    sellerCommission: '3',
+    buyerCommission: '3',
+    brokerageFee: '$0.00',
+    hoaMonthly: '$0.00',
+    hoaTransferFee: '$0.00',
     otherCosts: [] as { id: number; label: string; amount: string }[],
     comps: [] as any[],
     showComps: 'no',
@@ -165,9 +170,8 @@ export default function NetToSeller() {
 
   // Helper to format currency on blur
   const formatCurrencyInput = (value: string) => {
-    if (!value) return '';
     const num = parseFloat(value.replace(/[^0-9.]/g, ''));
-    if (isNaN(num)) return value;
+    if (isNaN(num)) return '$0.00';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
@@ -272,6 +276,7 @@ export default function NetToSeller() {
           annualTaxes: formattedTaxes,
           reissueCredit,
           priorPolicyAmount,
+          priorSaleDate: result.data.priorSaleDate || '',
           comps: result.data.comps || [],
           avmValue: result.data.avmValue || 0,
           avmLow: result.data.avmLow || 0,
@@ -360,6 +365,35 @@ export default function NetToSeller() {
     window.scrollTo(0, 0);
   };
   const prevStep = () => setStep(s => s - 1);
+
+  const calculateEstimatedReissue = (currentSalePrice: string, priorAmountStr: string) => {
+    const salePrice = Number(currentSalePrice.replace(/[^0-9.]/g, '')) || 0;
+    const priorAmount = Number(priorAmountStr.replace(/[^0-9.]/g, '')) || 0;
+    if (salePrice <= 0 || priorAmount <= 0) return 0;
+
+    const cappedPrior = Math.min(priorAmount, salePrice);
+    const roundedPrior = Math.ceil(cappedPrior / 1000) * 1000;
+    
+    let remaining = roundedPrior;
+    let basePremium = 0;
+    
+    // Ohio OTIRB Rate Schedule from config
+    const rates = WCT_CONFIG.otirbRates;
+    
+    for (let i = 0; i < rates.length; i++) {
+      const currentTier = rates[i];
+      const nextTier = rates[i + 1];
+      const tierMax = nextTier ? nextTier.threshold - currentTier.threshold : Infinity;
+      
+      const amountInTier = Math.min(remaining, tierMax);
+      if (amountInTier <= 0) break;
+      
+      basePremium += (amountInTier / 1000) * currentTier.rate;
+      remaining -= amountInTier;
+    }
+
+    return basePremium * 0.30;
+  };
 
   const renderStep = () => {
     switch (step) {
@@ -499,12 +533,26 @@ export default function NetToSeller() {
                     {value: 'no', label: 'No'}, 
                     {
                       value: 'yes', 
-                      label: 'Yes (30% Discount)'
+                      label: `Yes, ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+                        calculateEstimatedReissue(
+                          formData.salePrice || formData.priorPolicyAmount, 
+                          formData.priorPolicyAmount
+                        )
+                      )} Discount applied at closing.`
                     }
                   ]}
                   icon={formData.reissueCredit === 'yes' ? CheckCircle2 : undefined}
                   className={formData.reissueCredit === 'yes' ? '[&_select]:font-bold [&_svg:first-of-type]:text-emerald-500' : ''}
                 />
+                {formData.reissueCredit === 'no' && (
+                  <p className="text-[10px] text-wct-slate font-medium pl-4 -mt-2">
+                    {formData.priorSaleDate ? (
+                      `Not applicable. Last closed in ${new Date(formData.priorSaleDate).getFullYear()}, outside of policy credit window.`
+                    ) : (
+                      "Not applicable. No prior sale record found within the credit window."
+                    )}
+                  </p>
+                )}
                 {formData.reissueCredit === 'yes' && (
                   <div className="space-y-4">
                     <WCTInput
@@ -644,7 +692,7 @@ export default function NetToSeller() {
                     )}
                   </div>
                 ))}
-                <WCTButton variant="outline" onClick={() => setFormData({...formData, mortgagePayoffs: [...formData.mortgagePayoffs, { id: Date.now(), lender: '', amount: '' }]})} className="w-full">
+                <WCTButton variant="outline" onClick={() => setFormData({...formData, mortgagePayoffs: [...formData.mortgagePayoffs, { id: Date.now(), lender: '', amount: '$0.00' }]})} className="w-full">
                   <Plus className="w-4 h-4" /> Add another payoff
                 </WCTButton>
               </div>
@@ -732,24 +780,49 @@ export default function NetToSeller() {
               options={[{value: 'yes', label: 'Yes'}, {value: 'no', label: 'No'}]}
             />
             {formData.payingCommission === 'yes' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <WCTSelect 
-                  label="Commission Type" 
-                  value={formData.commissionType} 
-                  onChange={e => setFormData({...formData, commissionType: e.target.value})}
-                  options={[{value: 'percent', label: 'Percent of Sale Price'}, {value: 'flat', label: 'Flat Amount'}]}
-                />
-                <WCTInput 
-                  label={formData.commissionType === 'percent' ? "Total Percent (%)" : "Total Amount ($)"} 
-                  value={formData.commissionValue} 
-                  onChange={e => setFormData({...formData, commissionValue: e.target.value})} 
-                  onBlur={e => {
-                    if (formData.commissionType === 'flat') {
-                      handleBlur('commissionValue', e.target.value);
-                    }
-                  }}
-                />
-                {formData.commissionType === 'percent' && formData.commissionValue === '0' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <WCTSelect 
+                    label="Commission Type" 
+                    value={formData.commissionType} 
+                    onChange={e => setFormData({...formData, commissionType: e.target.value})}
+                    options={[{value: 'percent', label: 'Percent of Sale Price'}, {value: 'flat', label: 'Flat Amount'}]}
+                  />
+                  {formData.commissionType === 'flat' ? (
+                    <WCTInput 
+                      label="Total Amount ($)" 
+                      value={formData.commissionValue} 
+                      onChange={e => setFormData({...formData, commissionValue: e.target.value})} 
+                      onBlur={e => handleBlur('commissionValue', e.target.value)}
+                    />
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <WCTInput 
+                        label="Seller Agent" 
+                        value={formData.sellerCommission} 
+                        onChange={e => setFormData({...formData, sellerCommission: e.target.value})} 
+                        suffix="%"
+                      />
+                      <WCTInput 
+                        label="Buyer Agent" 
+                        value={formData.buyerCommission} 
+                        onChange={e => setFormData({...formData, buyerCommission: e.target.value})} 
+                        suffix="%"
+                      />
+                    </div>
+                  )}
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <WCTInput 
+                    label="Brokerage Fee (Optional)" 
+                    value={formData.brokerageFee} 
+                    onChange={e => setFormData({...formData, brokerageFee: e.target.value})} 
+                    onBlur={e => handleBlur('brokerageFee', e.target.value)}
+                  />
+                </div>
+
+                {formData.commissionType === 'percent' && (Number(formData.sellerCommission) + Number(formData.buyerCommission)) === 0 && (
                   <motion.p 
                     initial={{ opacity: 0 }} 
                     animate={{ opacity: 1 }}
@@ -813,7 +886,7 @@ export default function NetToSeller() {
                   </button>
                 </div>
               ))}
-              <WCTButton variant="outline" onClick={() => setFormData({...formData, otherCosts: [...formData.otherCosts, { id: Date.now(), label: '', amount: '' }]})} className="w-full">
+              <WCTButton variant="outline" onClick={() => setFormData({...formData, otherCosts: [...formData.otherCosts, { id: Date.now(), label: '', amount: '$0.00' }]})} className="w-full">
                 <Plus className="w-4 h-4" /> Add other cost
               </WCTButton>
             </div>

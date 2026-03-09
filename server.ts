@@ -341,9 +341,16 @@ async function startServer() {
     const calculateForPrice = (price: number) => {
       if (!price) return null;
       
-      const commissionAmount = inputs.commissionType === 'percent' 
-        ? (price * (Number(inputs.commissionValue) / 100)) 
-        : (Number(inputs.commissionValue) || 0);
+      let commissionAmount = 0;
+      if (inputs.payingCommission === 'yes') {
+        if (inputs.commissionType === 'percent') {
+          const sellerComm = (price * (Number(inputs.sellerCommission || 0) / 100));
+          const buyerComm = (price * (Number(inputs.buyerCommission || 0) / 100));
+          commissionAmount = sellerComm + buyerComm + cleanNum(inputs.brokerageFee);
+        } else {
+          commissionAmount = cleanNum(inputs.commissionValue) + cleanNum(inputs.brokerageFee);
+        }
+      }
         
       const payoffsTotal = (inputs.mortgagePayoffs || []).reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
       const homeWarranty = Number(inputs.homeWarranty || 0);

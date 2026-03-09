@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Nunito+Sans:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -55,4 +56,38 @@
 
 .animate-shake {
   animation: shake 0.2s ease-in-out 0s 2;
+}
+
+body.retro-theme {
+  background-color: #000000 !important;
+  color: #39ff14 !important; /* Neon Green */
+  font-family: 'Press Start 2P', monospace !important;
+}
+
+body.retro-theme div,
+body.retro-theme p,
+body.retro-theme h1,
+body.retro-theme h2,
+body.retro-theme h3,
+body.retro-theme span,
+body.retro-theme input,
+body.retro-theme button {
+  font-family: 'Press Start 2P', monospace !important;
+  background-color: transparent !important;
+  color: #39ff14 !important;
+  border-color: #39ff14 !important;
+  box-shadow: none !important;
+  border-radius: 0px !important;
+}
+
+body.retro-theme input,
+body.retro-theme button {
+  border: 2px solid #39ff14 !important;
+  padding: 10px;
+}
+
+body.retro-theme button:hover {
+  background-color: #39ff14 !important;
+  color: #000000 !important;
+  cursor: pointer;
 }

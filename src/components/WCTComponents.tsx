@@ -45,10 +45,11 @@ interface WCTInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label: string;
   error?: string;
   icon?: LucideIcon;
+  suffix?: string;
 }
 
 export const WCTInput = React.forwardRef<HTMLInputElement, WCTInputProps>(
-  ({ label, error, icon: Icon, className = "", ...props }, ref) => (
+  ({ label, error, icon: Icon, suffix, className = "", ...props }, ref) => (
     <div className="flex flex-col gap-2">
       <label className="text-sm font-medium text-[#A2B2C8] uppercase tracking-[1.5px] font-montserrat">
         {label}
@@ -57,9 +58,14 @@ export const WCTInput = React.forwardRef<HTMLInputElement, WCTInputProps>(
         {Icon && <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#A2B2C8] pointer-events-none"><Icon className="w-5 h-5" /></div>}
         <input 
           ref={ref}
-          className={`w-full px-4 py-3 rounded-xl border ${error ? 'border-red-500' : 'border-[#A2B2C8]/30'} focus:outline-none focus:border-[#004EA8] bg-white text-[#004EA8] ${Icon ? 'pl-12' : ''} ${className}`}
+          className={`w-full px-4 py-3 rounded-xl border ${error ? 'border-red-500' : 'border-[#A2B2C8]/30'} focus:outline-none focus:border-[#004EA8] bg-white text-[#004EA8] ${Icon ? 'pl-12' : ''} ${suffix ? 'pr-10' : ''} ${className}`}
           {...props}
         />
+        {suffix && (
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[#A2B2C8] font-medium pointer-events-none">
+            {suffix}
+          </div>
+        )}
       </div>
       {error && <span className="text-xs text-red-500">{error}</span>}
     </div>
