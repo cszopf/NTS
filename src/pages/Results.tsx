@@ -168,9 +168,10 @@ export default function Results() {
   return (
     <div className="min-h-screen bg-wct-slate/5 py-12 px-6 flex items-center justify-center">
       <div className={`max-w-${scenarios.length > 1 ? '7xl' : '3xl'} w-full relative`}>
-        {/* Close Button (Mock for pop-up feel) */}
-        <Link to="/net-to-seller" className="absolute -top-12 right-0 text-wct-slate hover:text-wct-blue transition-colors p-2">
-          <span className="text-xs uppercase tracking-widest font-bold">Close</span>
+        {/* Back Button */}
+        <Link to="/net-to-seller" className="absolute -top-12 left-0 text-wct-slate hover:text-wct-blue transition-colors p-2 flex items-center gap-1">
+          <Edit2 className="w-4 h-4" />
+          <span className="text-xs uppercase tracking-widest font-bold">Back</span>
         </Link>
 
         {estimate.addressFull.toLowerCase().includes('3159 w 11th') && (
