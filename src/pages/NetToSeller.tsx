@@ -11,9 +11,11 @@ import {
 import { SmartTechModal } from '../components/SmartTechModal';
 import { AddressAutocomplete } from '../components/AddressAutocomplete';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, ChevronRight, ChevronLeft, Calculator, Percent, X } from 'lucide-react';
+import { Plus, Trash2, ChevronRight, ChevronLeft, Calculator, Percent, X, Shield, CheckCircle2 } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
+import Confetti from 'react-confetti';
+import { useWindowSize } from 'react-use';
 
 const ReissueModal = ({ isOpen, onClose, priorAmount }: { isOpen: boolean; onClose: () => void; priorAmount: string }) => {
   if (!isOpen) return null;
@@ -84,6 +86,27 @@ export default function NetToSeller() {
   const [showReissueModal, setShowReissueModal] = useState(false);
   const [showSmartModal, setShowSmartModal] = useState(false);
 
+  const { width, height } = useWindowSize();
+  const [logoClicks, setLogoClicks] = useState(0);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const lastClickTime = useRef(0);
+
+  const handleLogoClick = () => {
+    const now = Date.now();
+    if (now - lastClickTime.current < 2000) { // 2 second window for "rapid" clicks
+      const newClicks = logoClicks + 1;
+      setLogoClicks(newClicks);
+      if (newClicks >= 7) {
+        setShowConfetti(true);
+        setLogoClicks(0);
+        setTimeout(() => setShowConfetti(false), 10000);
+      }
+    } else {
+      setLogoClicks(1);
+    }
+    lastClickTime.current = now;
+  };
+
   const salePriceInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -109,7 +132,7 @@ export default function NetToSeller() {
     ownerName: '',
     parcelNumber: '',
     annualTaxes: '',
-    policyType: 'standard',
+    policyType: 'homeowner',
     reissueCredit: 'no',
     priorPolicyAmount: '0',
     priorPolicyFile: null as File | null,
@@ -346,8 +369,9 @@ export default function NetToSeller() {
             <img 
               src="https://images.squarespace-cdn.com/content/v1/5f4d40b11b4f1e6a11b920b5/1598967776211-2JVFU1R4U8PQM71BWUVE/WorldClassTitle_Logos-RGB-Primary.png" 
               alt="World Class Title" 
-              className="h-24 md:h-32 object-contain mb-8"
+              className="h-24 md:h-32 object-contain mb-8 cursor-pointer active:scale-95 transition-transform"
               referrerPolicy="no-referrer"
+              onClick={handleLogoClick}
             />
             <h1 className="text-4xl md:text-5xl text-[#004EA8] mb-4">Net to Seller Calculator</h1>
             <p className="text-xl text-[#A2B2C8] mb-12 font-subheader">Estimate your net proceeds in under 60 seconds</p>
@@ -409,7 +433,18 @@ export default function NetToSeller() {
                   onChange={e => setFormData({...formData, salePrice: e.target.value})} 
                   onBlur={e => handleBlur('salePrice', e.target.value)}
                   required 
+                  className={Number(formData.salePrice.replace(/[^0-9.]/g, '')) >= 100000000 ? 'animate-shake border-amber-500' : ''}
                 />
+                {Number(formData.salePrice.replace(/[^0-9.]/g, '')) >= 100000000 && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }} 
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-amber-800 text-xs font-medium flex items-center gap-2"
+                  >
+                    <span>💸</span>
+                    <span>Whoa there, Elon! For private islands and skyscrapers, please call the World Class Title executive team directly.</span>
+                  </motion.div>
+                )}
                 {(formData.avmLow > 0 && formData.avmHigh > 0) ? (
                   <p className="text-[10px] text-emerald-600 font-bold -mt-3 pl-4 uppercase">
                     AVM ESTIMATE ${Math.round(formData.avmLow / 1000)}k - ${Math.round(formData.avmHigh / 1000)}k
@@ -451,7 +486,9 @@ export default function NetToSeller() {
                 label="Policy Type" 
                 value={formData.policyType} 
                 onChange={e => setFormData({...formData, policyType: e.target.value})}
-                options={[{value: 'standard', label: 'Standard Owner Policy'}, {value: 'homeowner', label: 'Homeowner Policy (+15%)'}]}
+                options={[{value: 'standard', label: 'Standard Owner Policy'}, {value: 'homeowner', label: 'Homeowner Policy'}]}
+                icon={formData.policyType === 'homeowner' ? Shield : undefined}
+                className={formData.policyType === 'homeowner' ? '[&_svg:first-of-type]:text-emerald-500' : ''}
               />
               <div className="space-y-4">
                 <WCTSelect 
@@ -465,6 +502,8 @@ export default function NetToSeller() {
                       label: 'Yes (30% Discount)'
                     }
                   ]}
+                  icon={formData.reissueCredit === 'yes' ? CheckCircle2 : undefined}
+                  className={formData.reissueCredit === 'yes' ? '[&_select]:font-bold [&_svg:first-of-type]:text-emerald-500' : ''}
                 />
                 {formData.reissueCredit === 'yes' && (
                   <div className="space-y-4">
@@ -710,6 +749,15 @@ export default function NetToSeller() {
                     }
                   }}
                 />
+                {formData.commissionType === 'percent' && formData.commissionValue === '0' && (
+                  <motion.p 
+                    initial={{ opacity: 0 }} 
+                    animate={{ opacity: 1 }}
+                    className="text-[10px] text-emerald-600 font-bold mt-1 pl-4"
+                  >
+                    🦄 "A 0% commission?! In this economy?! You are a saint."
+                  </motion.p>
+                )}
               </div>
             )}
             <div className="flex justify-between pt-8">
@@ -782,6 +830,7 @@ export default function NetToSeller() {
 
   return (
     <div className="min-h-screen bg-wct-slate/5 py-12 px-6 flex items-center justify-center">
+      {showConfetti && <Confetti width={width} height={height} recycle={false} numberOfPieces={500} gravity={0.1} />}
       <div className="max-w-2xl w-full relative">
         {/* Close Button (Mock for pop-up feel) */}
         <button className="absolute -top-12 right-0 text-wct-slate hover:text-wct-blue transition-colors p-2">

@@ -147,7 +147,7 @@ function calculateTitlePremium(salePrice: number, policyType: string, reissueEna
   if (typeof policyType === 'string' && policyType.toLowerCase().includes('homeowner')) {
       const surcharge = basePremium * 0.15;
       grossPremium += surcharge;
-      breakdown.push(`Homeowner Surcharge (15%): +$${surcharge.toFixed(2)}`);
+      breakdown.push(`Homeowner Surcharge: +$${surcharge.toFixed(2)}`);
   }
 
   let credit = 0;

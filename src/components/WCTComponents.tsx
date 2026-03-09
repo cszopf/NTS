@@ -71,19 +71,26 @@ interface WCTSelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label: string;
   options: { value: string; label: string }[];
   error?: string;
+  icon?: LucideIcon;
 }
 
-export const WCTSelect: React.FC<WCTSelectProps> = ({ label, options, error, className = "", ...props }) => (
+export const WCTSelect: React.FC<WCTSelectProps> = ({ label, options, error, icon: Icon, className = "", ...props }) => (
   <div className={`flex flex-col gap-2 ${className}`}>
     <label className="text-sm font-medium text-[#A2B2C8] uppercase tracking-[1.5px] font-montserrat">
       {label}
     </label>
-    <select 
-      className={`w-full px-4 py-3 rounded-xl border ${error ? 'border-red-500' : 'border-[#A2B2C8]/30'} focus:outline-none focus:border-[#004EA8] bg-white text-[#004EA8] appearance-none`}
-      {...props}
-    >
-      {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-    </select>
+    <div className="relative">
+      {Icon && <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#A2B2C8] pointer-events-none"><Icon className="w-5 h-5" /></div>}
+      <select 
+        className={`w-full px-4 py-3 rounded-xl border ${error ? 'border-red-500' : 'border-[#A2B2C8]/30'} focus:outline-none focus:border-[#004EA8] bg-white text-[#004EA8] appearance-none ${Icon ? 'pl-12' : ''}`}
+        {...props}
+      >
+        {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+      </select>
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#A2B2C8]">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+      </div>
+    </div>
     {error && <span className="text-xs text-red-500">{error}</span>}
   </div>
 );
@@ -112,7 +119,15 @@ export const WCTAlert: React.FC<{ type: 'error' | 'warning' | 'info'; children: 
   );
 };
 
-export const WCTSummaryRow: React.FC<{ label: string; value: string | number; isTotal?: boolean; details?: { label: string; value: number }[]; description?: string }> = ({ label, value, isTotal = false, details, description }) => {
+export const WCTSummaryRow: React.FC<{ 
+  label: string; 
+  value: string | number; 
+  isTotal?: boolean; 
+  details?: { label: string; value: number }[]; 
+  description?: string;
+  icon?: LucideIcon;
+  iconColor?: string;
+}> = ({ label, value, isTotal = false, details, description, icon: Icon, iconColor = "text-emerald-500" }) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const hasDetails = (details && details.length > 0) || !!description;
 
@@ -133,6 +148,7 @@ export const WCTSummaryRow: React.FC<{ label: string; value: string | number; is
           {hasDetails && (
             <span className={`text-[10px] transform transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
           )}
+          {Icon && <Icon className={`w-4 h-4 ${iconColor}`} />}
           {label}
         </span>
         <span className={`${isTotal ? 'text-2xl font-bold' : 'font-medium'} ${valueColor} font-nunito`}>

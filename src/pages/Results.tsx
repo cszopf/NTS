@@ -10,7 +10,7 @@ import { AuthModal } from '../components/AuthModal';
 import { SmartTechModal } from '../components/SmartTechModal';
 import { GeminiAssistant } from '../components/GeminiAssistant';
 import { motion, AnimatePresence } from 'motion/react';
-import { Share2, Mail, Edit2, CheckCircle2, FileDown, Sparkles, Download } from 'lucide-react';
+import { Share2, Mail, Edit2, CheckCircle2, FileDown, Sparkles, Download, Shield } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { domToCanvas } from 'modern-screenshot';
 import jsPDF from 'jspdf';
@@ -162,6 +162,8 @@ export default function Results() {
     calcJson = {};
   }
   const scenarios = calcJson.scenarios && calcJson.scenarios.length > 0 ? calcJson.scenarios : [estimate];
+  const inputs = estimate.inputsJson ? JSON.parse(estimate.inputsJson) : {};
+  const isHomeowner = inputs.policyType === 'homeowner';
 
   return (
     <div className="min-h-screen bg-wct-slate/5 py-12 px-6 flex items-center justify-center">
@@ -170,6 +172,21 @@ export default function Results() {
         <Link to="/net-to-seller" className="absolute -top-12 right-0 text-wct-slate hover:text-wct-blue transition-colors p-2">
           <span className="text-xs uppercase tracking-widest font-bold">Close</span>
         </Link>
+
+        {estimate.addressFull.toLowerCase().includes('3159 w 11th') && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <WCTAlert type="warning">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🎄</span>
+                <p className="font-bold">Warning: Buyer must be notified of the 'Major Award' in the front window. Fragile!</p>
+              </div>
+            </WCTAlert>
+          </motion.div>
+        )}
 
         <motion.div
           ref={resultsRef}
@@ -230,7 +247,12 @@ export default function Results() {
                       details={closingDetails}
                       description="Fees associated with closing the transaction, such as recording fees, settlement fees, etc."
                     />
-                    <WCTSummaryRow label="Title Insurance (OTIRB)" value={-titlePremium} description="Insurance policy protecting the owner and lender against title defects." />
+                    <WCTSummaryRow 
+                      label="Title Insurance (OTIRB)" 
+                      value={-titlePremium} 
+                      description="Insurance policy protecting the owner and lender against title defects." 
+                      icon={isHomeowner ? Shield : undefined}
+                    />
                     <WCTSummaryRow label="Transfer Tax" value={-transferTax} description="Tax paid to the county or state for transferring the property title." />
                     <WCTSummaryRow label="Tax Proration" value={-taxProration} description="Adjustment for property taxes to ensure each party pays for the days they owned the property." />
                     {hoaTransfer > 0 && <WCTSummaryRow label="HOA Transfer Fee" value={-hoaTransfer} description="Fee charged by the Homeowners Association to transfer ownership records." />}
