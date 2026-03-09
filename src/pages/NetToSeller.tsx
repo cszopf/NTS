@@ -832,10 +832,16 @@ export default function NetToSeller() {
     <div className="min-h-screen bg-wct-slate/5 py-12 px-6 flex items-center justify-center">
       {showConfetti && <Confetti width={width} height={height} recycle={false} numberOfPieces={500} gravity={0.1} />}
       <div className="max-w-2xl w-full relative">
-        {/* Close Button (Mock for pop-up feel) */}
-        <button className="absolute -top-12 right-0 text-wct-slate hover:text-wct-blue transition-colors p-2">
-          <span className="text-xs uppercase tracking-widest font-bold">Close</span>
-        </button>
+        {/* Back Button */}
+        {step > 0 && (
+          <button 
+            onClick={prevStep}
+            className="absolute -top-12 left-0 text-wct-slate hover:text-wct-blue transition-colors p-2 flex items-center gap-1"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span className="text-xs uppercase tracking-widest font-bold">Back</span>
+          </button>
+        )}
 
         {step > 0 && <WCTStepIndicator currentStep={step} totalSteps={5} />}
         <AnimatePresence mode="wait">
