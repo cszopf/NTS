@@ -1,5 +1,5 @@
 {
-  "name": "World Class Title Net to Seller",
-  "description": "A premium, mobile-first net sheet tool for sellers and agents to estimate proceeds for Ohio properties.",
+  "name": "Net to Seller Calculator | World Class Title",
+  "description": "Generate accurate, instant Net to Seller estimates and market comps with World Class Title.",
   "requestFramePermissions": ["geolocation"]
 }
