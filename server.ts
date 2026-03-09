@@ -8,7 +8,8 @@ import { WCT_CONFIG } from "./src/constants/config";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const db = new Database("nts.db");
+const dbPath = process.env.DB_PATH || "nts.db";
+const db = new Database(dbPath);
 
 // Initialize Database
 db.exec(`

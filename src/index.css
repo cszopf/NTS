@@ -24,3 +24,25 @@
     @apply font-montserrat font-normal normal-case tracking-normal;
   }
 }
+
+/* Google Places Autocomplete Styling */
+.pac-container {
+  @apply rounded-xl border border-[#A2B2C8]/30 shadow-xl font-nunito mt-1 overflow-hidden;
+  z-index: 9999 !important;
+}
+
+.pac-item {
+  @apply px-4 py-3 border-[#A2B2C8]/10 cursor-pointer hover:bg-[#004EA8]/5 transition-colors flex items-center gap-2;
+}
+
+.pac-item-query {
+  @apply text-[#004EA8] font-semibold text-sm;
+}
+
+.pac-matched {
+  @apply text-[#64CCC9];
+}
+
+.pac-icon {
+  @apply opacity-50;
+}
