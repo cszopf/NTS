@@ -10,7 +10,10 @@ import { AuthModal } from '../components/AuthModal';
 import { SmartTechModal } from '../components/SmartTechModal';
 import { GeminiAssistant } from '../components/GeminiAssistant';
 import { motion, AnimatePresence } from 'motion/react';
-import { Share2, Mail, Edit2, CheckCircle2, Save, Sparkles } from 'lucide-react';
+import { Share2, Mail, Edit2, CheckCircle2, FileDown, Sparkles, Download } from 'lucide-react';
+import { GoogleGenAI } from "@google/genai";
+import { domToCanvas } from 'modern-screenshot';
+import jsPDF from 'jspdf';
 
 export default function Results() {
   const { estimateId } = useParams();
@@ -23,6 +26,8 @@ export default function Results() {
   const [authSuccess, setAuthSuccess] = useState(false);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [savingPdf, setSavingPdf] = useState(false);
+  const resultsRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchEstimate = async () => {
@@ -50,25 +55,82 @@ export default function Results() {
   const handleGenerateSummary = async () => {
     setGeneratingSummary(true);
     try {
-      const res = await fetch('/api/net-to-seller/generate-summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          calcJson: estimate.calcJson,
-          address: estimate.addressFull
-        })
+      // @ts-ignore - process.env is injected by the platform
+      let apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (apiKey) {
+        apiKey = apiKey.replace(/^["']|["']$/g, '');
+      }
+      if (!apiKey) {
+        throw new Error("API Key not found");
+      }
+      
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const context = `
+        You are a professional real estate assistant for World Class Title.
+        Generate a professional, friendly email summary for a client based on this Net to Seller estimate.
+        
+        Property: ${estimate.addressFull}
+        Estimated Net Proceeds: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.estimatedNetProceeds)}
+        Sale Price: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.salePrice)}
+        
+        Breakdown of costs:
+        - Commission: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.commissionAmount)}
+        - Mortgage Payoffs: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.mortgagePayoffsTotal)}
+        - Seller Credits: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.sellerCreditsTotal)}
+        - Home Warranty: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.homeWarranty || 0)}
+        - Closing Costs: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.estimatedClosingCostsTotal)}
+        - Title Insurance: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.estimatedTitlePremium)}
+        - Transfer Tax: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.estimatedTransferTax)}
+        - Tax Proration: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.estimatedTaxProration)}
+        
+        The email should be ready to copy-paste. Include a subject line.
+        Keep it professional and clear.
+      `;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ role: 'user', parts: [{ text: context }] }],
       });
-      const data = await res.json();
-      if (data.summary) {
-        setAiSummary(data.summary);
+
+      const text = response.text;
+      if (text) {
+        setAiSummary(text);
       } else {
         setError("Failed to generate summary.");
       }
     } catch (err) {
       console.error(err);
-      setError("Failed to generate summary.");
+      setError("Failed to generate summary. Please check your connection.");
     } finally {
       setGeneratingSummary(false);
+    }
+  };
+
+  const handleSaveAsPdf = async () => {
+    if (!resultsRef.current) return;
+    setSavingPdf(true);
+    try {
+      const element = resultsRef.current;
+      const canvas = await domToCanvas(element, {
+        scale: 2,
+        backgroundColor: '#ffffff'
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'px',
+        format: [canvas.width / 2, canvas.height / 2]
+      });
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
+      pdf.save(`Net-to-Seller-${estimate.addressFull.replace(/[^a-z0-9]/gi, '-')}.pdf`);
+    } catch (err) {
+      console.error("PDF Generation Error:", err);
+      setError("Failed to generate PDF. Please try again.");
+    } finally {
+      setSavingPdf(false);
     }
   };
 
@@ -110,9 +172,11 @@ export default function Results() {
         </Link>
 
         <motion.div
+          ref={resultsRef}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
+          className="bg-white p-8 rounded-3xl"
         >
           <div className="mb-8 text-center">
             <div className="flex justify-center mb-6">
@@ -134,6 +198,7 @@ export default function Results() {
               const commission = scenario.commissionAmount;
               const payoffs = scenario.payoffsTotal ?? scenario.mortgagePayoffsTotal;
               const credits = scenario.creditsTotal ?? scenario.sellerCreditsTotal;
+              const homeWarranty = scenario.homeWarranty ?? 0;
               const closingCosts = scenario.estimatedClosingCosts ?? scenario.estimatedClosingCostsTotal;
               const titlePremium = scenario.estimatedTitlePremium;
               const transferTax = scenario.estimatedTransferTax;
@@ -158,6 +223,7 @@ export default function Results() {
                     <WCTSummaryRow label="Real Estate Commission" value={-commission} description="Fees paid to real estate agents for their services in the sale." />
                     <WCTSummaryRow label="Mortgage Payoffs" value={-payoffs} description="The amount required to pay off the existing mortgage(s) on the property." />
                     <WCTSummaryRow label="Seller Credits" value={-credits} description="Credits given by the seller to the buyer to cover closing costs or repairs." />
+                    {homeWarranty > 0 && <WCTSummaryRow label="Home Warranty" value={-homeWarranty} description="Cost of a home warranty policy provided by the seller." />}
                     <WCTSummaryRow 
                       label="Closing Costs" 
                       value={-closingCosts} 
@@ -238,8 +304,9 @@ export default function Results() {
               {copied ? <CheckCircle2 className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
               {copied ? 'Copied!' : 'Copy Link'}
             </WCTButton>
-            <WCTButton onClick={() => setShowAuth(true)}>
-              <Save className="w-4 h-4" /> Save Estimate
+            <WCTButton onClick={handleSaveAsPdf} disabled={savingPdf}>
+              {savingPdf ? <Download className="w-4 h-4 animate-bounce" /> : <FileDown className="w-4 h-4" />}
+              {savingPdf ? 'Generating PDF...' : 'Save as PDF'}
             </WCTButton>
             <WCTButton onClick={() => window.open('https://www.worldclasstitle.com', '_blank')}>
               Order Marketing

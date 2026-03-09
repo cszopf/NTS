@@ -66,6 +66,7 @@ export const GeminiAssistant: React.FC<GeminiAssistantProps> = ({ estimate }) =>
         - Commission: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.commissionAmount)}
         - Mortgage Payoffs: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.mortgagePayoffsTotal)}
         - Seller Credits: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.sellerCreditsTotal)}
+        - Home Warranty: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.homeWarranty || 0)}
         - Closing Costs: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.estimatedClosingCostsTotal)}
         - Title Premium: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.estimatedTitlePremium)}
         - Transfer Tax: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(estimate.estimatedTransferTax)}

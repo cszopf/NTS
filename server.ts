@@ -56,6 +56,7 @@ db.exec(`
     sellerCreditsTotal REAL,
     mortgagePayoffs TEXT,
     mortgagePayoffsTotal REAL,
+    homeWarranty REAL,
     hoaMonthly REAL,
     hoaTransferFee REAL,
     otherCosts TEXT,
@@ -84,6 +85,15 @@ try {
 try {
   db.exec("ALTER TABLE NetToSellerEstimate ADD COLUMN estimatedTitlePremium REAL");
   console.log("Added estimatedTitlePremium column to database");
+} catch (err: any) {
+  if (!err.message.includes("duplicate column name")) {
+    console.log("Migration note:", err.message);
+  }
+}
+
+try {
+  db.exec("ALTER TABLE NetToSellerEstimate ADD COLUMN homeWarranty REAL");
+  console.log("Added homeWarranty column to database");
 } catch (err: any) {
   if (!err.message.includes("duplicate column name")) {
     console.log("Migration note:", err.message);
@@ -256,10 +266,14 @@ async function startServer() {
           const compsResponse = await fetch(compsUrl, { headers: { 'apikey': attomKey, 'Accept': 'application/json' } });
           if (compsResponse.ok) {
             const compsData = await compsResponse.json();
-            const properties = compsData.RESPONSE_GROUP?.RESPONSE?.RESPONSE_DATA?.PROPERTY_INFORMATION_RESPONSE_ext?.SUBJECT_PROPERTY_ext?.PROPERTY || [];
-            const filteredProperties = properties.filter((p: any) => p.COMPARABLE_PROPERTY_ext);
+            let properties = compsData.RESPONSE_GROUP?.RESPONSE?.RESPONSE_DATA?.PROPERTY_INFORMATION_RESPONSE_ext?.SUBJECT_PROPERTY_ext?.PROPERTY || [];
+            if (!Array.isArray(properties)) properties = [properties];
+            
+            const filteredProperties = properties.filter((p: any) => p && p.COMPARABLE_PROPERTY_ext);
             comps = filteredProperties.map((p: any) => {
-              const comp = p.COMPARABLE_PROPERTY_ext.PROPERTY;
+              const comp = p.COMPARABLE_PROPERTY_ext?.PROPERTY;
+              if (!comp) return null;
+              
               const addressObj = comp.address || {};
               const addressStr = addressObj.oneLine || 
                               `${addressObj.line1 || ''}, ${addressObj.locality || ''}, ${addressObj.countrySubd || ''} ${addressObj.postal1 || ''}`.replace(/^[,\s]+|[,\s]+$/g, '');
@@ -271,7 +285,7 @@ async function startServer() {
                 baths: comp.building?.rooms?.bathstotal || 0,
                 sqft: comp.building?.size?.universalsize || 0
               };
-            });
+            }).filter(Boolean);
           }
         } catch (compsError) {
           console.error("ATTOM Comps Lookup Failed:", compsError);
@@ -332,8 +346,8 @@ async function startServer() {
         : (Number(inputs.commissionValue) || 0);
         
       const payoffsTotal = (inputs.mortgagePayoffs || []).reduce((acc: number, p: any) => acc + (Number(p.amount) || 0), 0);
+      const homeWarranty = Number(inputs.homeWarranty || 0);
       const creditsTotal = Number(inputs.sellerConcessions || 0) + 
-                           Number(inputs.homeWarranty || 0) + 
                            Number(inputs.repairCredits || 0) + 
                            Number(inputs.otherCredits || 0);
       
@@ -372,7 +386,7 @@ async function startServer() {
         titlePremiumBreakdown = result.breakdown;
       }
 
-      const netProceeds = price - commissionAmount - payoffsTotal - creditsTotal - 
+      const netProceeds = price - commissionAmount - payoffsTotal - creditsTotal - homeWarranty - 
                           estimatedClosingCosts - estimatedTransferTax - estimatedTaxProration - 
                           estimatedTitlePremium - (Number(inputs.hoaTransferFee) || 0) - otherCostsTotal;
 
@@ -381,6 +395,7 @@ async function startServer() {
         commissionAmount,
         payoffsTotal,
         creditsTotal,
+        homeWarranty,
         estimatedClosingCosts,
         closingCostsBreakdown,
         estimatedTransferTax,
@@ -440,10 +455,10 @@ async function startServer() {
         ownerName, ownerMailingAddress, parcelNumber, propertyType, beds, baths, sqft,
         taxYear, annualTaxes, homestead, salePrice, closingDate, commissionType,
         commissionValue, commissionAmount, sellerCreditsTotal, mortgagePayoffs,
-        mortgagePayoffsTotal, hoaMonthly, hoaTransferFee, otherCosts, otherCostsTotal,
+        mortgagePayoffsTotal, homeWarranty, hoaMonthly, hoaTransferFee, otherCosts, otherCostsTotal,
         estimatedClosingCostsTotal, estimatedTitlePremium, estimatedTransferTax, estimatedTaxProration,
         estimatedNetProceeds, inputsJson, calcJson, shareToken
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -451,7 +466,7 @@ async function startServer() {
       data.ownerName, data.ownerMailingAddress, data.parcelNumber, data.propertyType, data.beds, data.baths, data.sqft,
       data.taxYear, data.annualTaxes, data.homestead ? 1 : 0, data.salePrice, data.closingDate, data.commissionType,
       data.commissionValue, data.commissionAmount, data.sellerCreditsTotal, JSON.stringify(data.mortgagePayoffs),
-      data.mortgagePayoffsTotal, data.hoaMonthly, data.hoaTransferFee, JSON.stringify(data.otherCosts), data.otherCostsTotal,
+      data.mortgagePayoffsTotal, data.homeWarranty || 0, data.hoaMonthly, data.hoaTransferFee, JSON.stringify(data.otherCosts), data.otherCostsTotal,
       data.estimatedClosingCostsTotal, data.estimatedTitlePremium || 0, data.estimatedTransferTax, data.estimatedTaxProration,
       data.estimatedNetProceeds || data.netProceeds || 0, JSON.stringify(data.inputs), JSON.stringify(data.calcJson), shareToken
     );

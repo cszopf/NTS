@@ -342,10 +342,16 @@ export default function NetToSeller() {
     switch (step) {
       case 0:
         return (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-12">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-12 flex flex-col items-center">
+            <img 
+              src="https://images.squarespace-cdn.com/content/v1/5f4d40b11b4f1e6a11b920b5/1598967776211-2JVFU1R4U8PQM71BWUVE/WorldClassTitle_Logos-RGB-Primary.png" 
+              alt="World Class Title" 
+              className="h-24 md:h-32 object-contain mb-8"
+              referrerPolicy="no-referrer"
+            />
             <h1 className="text-4xl md:text-5xl text-[#004EA8] mb-4">Net to Seller Calculator</h1>
             <p className="text-xl text-[#A2B2C8] mb-12 font-subheader">Estimate your net proceeds in under 60 seconds</p>
-            <WCTButton onClick={nextStep} className="mx-auto px-12 py-5 text-lg">Start estimate</WCTButton>
+            <WCTButton onClick={nextStep} className="px-12 py-5 text-lg">Start estimate</WCTButton>
           </motion.div>
         );
 
