@@ -30,6 +30,7 @@ export default function Results() {
   const [prospects, setProspects] = useState<any[]>([]);
   const [isLoadingProspects, setIsLoadingProspects] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [prospectsError, setProspectsError] = useState<string | null>(null);
   const resultsRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -140,6 +141,7 @@ export default function Results() {
 
   const handleFetchProspects = async () => {
     setIsLoadingProspects(true);
+    setProspectsError(null);
     try {
       const res = await fetch('/api/net-to-seller/prospects', {
         method: 'POST',
@@ -149,10 +151,13 @@ export default function Results() {
       const data = await res.json();
       if (data.success) {
         setProspects(data.prospects);
+      } else {
+        setProspectsError(data.errorDetail || 'Failed to fetch prospects');
       }
       setHasSearched(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error fetching prospects:", err);
+      setProspectsError(err.message);
     } finally {
       setIsLoadingProspects(false);
     }
@@ -379,7 +384,12 @@ export default function Results() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {prospects.length > 0 ? (
+                  {prospectsError ? (
+                    <div className="bg-red-50 border border-red-200 p-4 rounded-lg text-center">
+                      <p className="text-red-600 font-bold mb-1">Error Fetching Prospects</p>
+                      <p className="text-red-500 text-sm">{prospectsError}</p>
+                    </div>
+                  ) : prospects.length > 0 ? (
                     <div className="grid grid-cols-1 gap-4">
                       {prospects.map((prospect, idx) => (
                         <motion.div 
@@ -418,7 +428,7 @@ export default function Results() {
                     </div>
                   ) : (
                     <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-[#A2B2C8]/30">
-                      <p className="text-[#A2B2C8]">No high-probability prospects found in the immediate area.</p>
+                      <p className="text-[#A2B2C8]">No prospects found. (If you are the admin, please verify your ATTOM_API key is set in your Render.com Environment Variables).</p>
                     </div>
                   )}
                 </div>

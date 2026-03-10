@@ -497,25 +497,56 @@ async function startServer() {
     }
 
     try {
-      const radiusUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/snapshot?latitude=${lat}&longitude=${lng}&radius=1&pageSize=50`;
-      const response = await fetch(radiusUrl, {
+      // Step 1: Get nearby properties via snapshot
+      const snapshotUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/snapshot?latitude=${lat}&longitude=${lng}&radius=1&pageSize=10`;
+      const snapshotRes = await fetch(snapshotUrl, {
         headers: { apikey: attomKey, accept: 'application/json' }
       });
 
-      if (!response.ok) {
-        return res.json({ success: false, prospects: [] });
+      if (!snapshotRes.ok) {
+        const errorText = await snapshotRes.text();
+        return res.status(400).json({ 
+          success: false, 
+          prospects: [], 
+          errorDetail: 'ATTOM Snapshot Error: ' + errorText 
+        });
       }
 
-      const data = await response.json();
-      const properties = data.property || [];
-      console.log("ATTOM Sample Property:", JSON.stringify(data.property?.[0], null, 2));
+      const snapshotData = await snapshotRes.json();
+      const initialProps = (snapshotData.property || []).slice(0, 10);
+      
+      if (initialProps.length === 0) {
+        return res.json({ success: true, prospects: [] });
+      }
 
+      // Step 2 & 3: Fetch expanded profiles concurrently
+      const profilePromises = initialProps.map(async (p: any) => {
+        const attomId = p.identifier?.attomId;
+        if (!attomId) return null;
+        
+        try {
+          const expandedUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/expandedprofile?attomid=${attomId}`;
+          const expandedRes = await fetch(expandedUrl, {
+            headers: { apikey: attomKey, accept: 'application/json' }
+          });
+          
+          if (!expandedRes.ok) return null;
+          const data = await expandedRes.json();
+          return data.property?.[0] || null;
+        } catch (err) {
+          return null;
+        }
+      });
+
+      const properties = (await Promise.all(profilePromises)).filter(Boolean);
+
+      // Step 4: Map and score detailed data
       const prospects = properties.map((p: any) => {
         let sellScore = 0;
         const tags: string[] = [];
 
-        // Check ownership duration (7+ years) - Try multiple possible date fields
-        const saleDateStr = p.sale?.amount?.salerecdate || p.sale?.saleTransDate || p.sale?.amount?.saleAmtDate;
+        // Check ownership duration (7+ years)
+        const saleDateStr = p.sale?.amount?.saleRecDate || p.sale?.amount?.salerecdate;
         if (saleDateStr) {
           const saleDate = new Date(saleDateStr);
           const sevenYearsAgo = new Date();
@@ -527,7 +558,7 @@ async function startServer() {
         }
 
         // Check absentee owner
-        if (p.summary?.absenteeInd === 'A' || p.summary?.absenteeind === 'A') {
+        if (p.summary?.absenteeInd === 'A') {
           sellScore += 2;
           tags.push("Absentee Owner");
         }
@@ -536,17 +567,9 @@ async function startServer() {
           tags.push("Nearby Home");
         }
 
-        // Robust owner name parsing
-        const owner = p.assessment?.owner?.owner1 || p.assessment?.owner;
-        let ownerName = 'Unknown Owner';
-        
-        if (owner) {
-          if (owner.fullName) ownerName = owner.fullName;
-          else if (owner.fullname) ownerName = owner.fullname;
-          else if (owner.firstName && owner.lastName) ownerName = `${owner.firstName} ${owner.lastName}`;
-          else if (owner.firstname && owner.lastname) ownerName = `${owner.firstname} ${owner.lastname}`;
-          else if (owner.firstNameAndMi && owner.lastName) ownerName = `${owner.firstNameAndMi} ${owner.lastName}`;
-        }
+        // Resilient owner name parsing
+        const owner = p.assessment?.owner?.owner1;
+        let ownerName = owner?.fullName || owner?.fullname || owner?.label || 'Unknown Owner';
 
         return {
           address: p.address?.oneLine || '',
@@ -555,13 +578,16 @@ async function startServer() {
           tags
         };
       })
-      .sort((a: any, b: any) => b.sellScore - a.sellScore)
-      .slice(0, 10);
+      .sort((a: any, b: any) => b.sellScore - a.sellScore);
 
       res.json({ success: true, prospects });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Prospects API Error:", error);
-      res.json({ success: false, prospects: [] });
+      res.status(500).json({ 
+        success: false, 
+        prospects: [], 
+        errorDetail: error.message 
+      });
     }
   });
 
