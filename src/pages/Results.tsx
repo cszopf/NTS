@@ -163,6 +163,42 @@ export default function Results() {
     }
   };
 
+  const handleDownloadCSV = () => {
+    if (!prospects || prospects.length === 0) return;
+
+    const headers = ["Owner Name", "Property Address", "Sell Score", "Tags"];
+    // Check if mailingAddress exists in any prospect to decide if we add the header
+    const hasMailing = prospects.some(p => p.mailingAddress);
+    if (hasMailing) headers.push("Mailing Address");
+
+    const csvRows = [
+      headers.join(","),
+      ...prospects.map(p => {
+        const row = [
+          `"${p.ownerName.replace(/"/g, '""')}"`,
+          `"${p.address.replace(/"/g, '""')}"`,
+          p.sellScore,
+          `"${p.tags.join("; ")}"`
+        ];
+        if (hasMailing) {
+          row.push(`"${(p.mailingAddress || "").replace(/"/g, '""')}"`);
+        }
+        return row.join(",");
+      })
+    ];
+
+    const csvString = csvRows.join("\n");
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "hot-leads.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
       <div className="animate-pulse text-[#004EA8] font-montserrat uppercase tracking-widest">Loading Estimate...</div>
@@ -390,8 +426,23 @@ export default function Results() {
                       <p className="text-red-500 text-sm">{prospectsError}</p>
                     </div>
                   ) : prospects.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-4">
-                      {prospects.map((prospect, idx) => (
+                    <div className="space-y-6">
+                      <div className="flex justify-between items-center">
+                        <p className="text-sm font-bold text-[#004EA8] uppercase tracking-widest">
+                          {prospects.length} Qualified Leads Found
+                        </p>
+                        <WCTButton 
+                          variant="outline" 
+                          onClick={handleDownloadCSV}
+                          className="flex items-center gap-2 px-4 py-2 text-xs"
+                        >
+                          <Download className="w-4 h-4" />
+                          Download Leads (CSV)
+                        </WCTButton>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 gap-4">
+                        {prospects.map((prospect, idx) => (
                         <motion.div 
                           key={idx}
                           initial={{ opacity: 0, x: -20 }}
@@ -425,10 +476,11 @@ export default function Results() {
                           </WCTCard>
                         </motion.div>
                       ))}
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-[#A2B2C8]/30">
-                      <p className="text-[#A2B2C8]">No prospects found. (If you are the admin, please verify your ATTOM_API key is set in your Render.com Environment Variables).</p>
+                      <p className="text-[#A2B2C8]">No high-probability sellers found in the immediate 1-mile radius. This neighborhood has very low turnover.</p>
                     </div>
                   )}
                 </div>

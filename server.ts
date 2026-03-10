@@ -498,7 +498,7 @@ async function startServer() {
 
     try {
       // Step 1: Get nearby properties via snapshot
-      const snapshotUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/snapshot?latitude=${lat}&longitude=${lng}&radius=1&pageSize=10`;
+      const snapshotUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/snapshot?latitude=${lat}&longitude=${lng}&radius=3&pageSize=40&propertytype=SINGLE%20FAMILY%20RESIDENCE`;
       const snapshotRes = await fetch(snapshotUrl, {
         headers: { apikey: attomKey, accept: 'application/json' }
       });
@@ -513,7 +513,7 @@ async function startServer() {
       }
 
       const snapshotData = await snapshotRes.json();
-      const initialProps = (snapshotData.property || []).slice(0, 10);
+      const initialProps = (snapshotData.property || []).slice(0, 40);
       
       if (initialProps.length === 0) {
         return res.json({ success: true, prospects: [] });
@@ -545,40 +545,56 @@ async function startServer() {
         let sellScore = 0;
         const tags: string[] = [];
 
-        // Check ownership duration (7+ years)
+        // Parse Owner Name
+        const owner = p.assessment?.owner?.owner1;
+        const ownerName = owner?.fullName || owner?.fullname || owner?.label || 'Unknown Owner';
+
+        // Condition 1: Length of Ownership (High Equity / Life Event)
         const saleDateStr = p.sale?.amount?.saleRecDate || p.sale?.amount?.salerecdate;
         if (saleDateStr) {
           const saleDate = new Date(saleDateStr);
-          const sevenYearsAgo = new Date();
-          sevenYearsAgo.setFullYear(sevenYearsAgo.getFullYear() - 7);
-          if (saleDate < sevenYearsAgo && saleDate.getFullYear() > 1900) {
+          const now = new Date();
+          const diffYears = (now.getTime() - saleDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+          
+          if (diffYears >= 15 && saleDate.getFullYear() > 1900) {
+            sellScore += 3;
+            tags.push("15+ Years Owned");
+          } else if (diffYears >= 7 && saleDate.getFullYear() > 1900) {
             sellScore += 2;
             tags.push("7+ Years Owned");
           }
         }
 
-        // Check absentee owner
+        // Condition 2: Absentee / Investor
         if (p.summary?.absenteeInd === 'A') {
           sellScore += 2;
           tags.push("Absentee Owner");
         }
 
-        if (sellScore === 0 && tags.length === 0) {
-          tags.push("Nearby Home");
+        // Condition 3: Corporate / Trust Offload
+        if (ownerName.match(/\b(LLC|INC|TRUST|PARTNERS|CORP|COMPANY)\b/i)) {
+          sellScore += 2;
+          tags.push("Corporate/Trust Owner");
         }
 
-        // Resilient owner name parsing
-        const owner = p.assessment?.owner?.owner1;
-        let ownerName = owner?.fullName || owner?.fullname || owner?.label || 'Unknown Owner';
+        // Condition 4: Financial Distress (Tax Delinquency)
+        const delinquentYear = p.assessment?.tax?.delinquentYear;
+        if (delinquentYear && delinquentYear > 0) {
+          sellScore += 3;
+          tags.push("Tax Delinquent");
+        }
 
         return {
           address: p.address?.oneLine || '',
+          mailingAddress: p.assessment?.owner?.mailingAddress?.oneLine || '',
           ownerName: ownerName,
           sellScore,
           tags
         };
       })
-      .sort((a: any, b: any) => b.sellScore - a.sellScore);
+      .filter((p: any) => p.sellScore > 0)
+      .sort((a: any, b: any) => b.sellScore - a.sellScore)
+      .slice(0, 15);
 
       res.json({ success: true, prospects });
     } catch (error: any) {
