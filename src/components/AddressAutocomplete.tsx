@@ -13,6 +13,15 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({ onAddr
   const [isLoaded, setIsLoaded] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const apiKey = import.meta.env.VITE_GOOGLE_PLACES_API;
+  
+  // Use a ref for the callback to avoid re-initializing autocomplete when parent re-renders
+  const onAddressSelectRef = useRef(onAddressSelect);
+  useEffect(() => {
+    onAddressSelectRef.current = onAddressSelect;
+  }, [onAddressSelect]);
+
+  const timeoutRef = useRef<any>(null);
+  const isSelectingRef = useRef(false);
 
   useEffect(() => {
     if (!apiKey) {
@@ -63,10 +72,21 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({ onAddr
         });
 
         autocompleteRef.current.addListener('place_changed', () => {
-          const place = autocompleteRef.current?.getPlace();
-          if (place && place.geometry) {
-            onAddressSelect(place);
+          isSelectingRef.current = true;
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
           }
+
+          const place = autocompleteRef.current?.getPlace();
+          // Ensure we have geometry or address components as requested
+          if (place && (place.geometry || place.address_components)) {
+            onAddressSelectRef.current(place);
+          }
+          
+          // Reset the selection flag after a short delay to ignore any trailing change events
+          setTimeout(() => {
+            isSelectingRef.current = false;
+          }, 500);
         });
 
         // Prevent form submission on Enter
@@ -90,12 +110,24 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({ onAddr
         setApiError("Error initializing autocomplete.");
       }
     }
-  }, [isLoaded, onAddressSelect]);
+  }, [isLoaded]);
 
   const handleManualChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!apiKey || apiError) {
-      onAddressSelect({ manualAddress: e.target.value });
+    const value = e.target.value;
+    
+    // If we're currently selecting from the dropdown, ignore manual change events
+    if (isSelectingRef.current) return;
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
     }
+
+    // Debounce manual entry to avoid racing with Google Places selection
+    timeoutRef.current = setTimeout(() => {
+      if (!isSelectingRef.current) {
+        onAddressSelectRef.current({ manualAddress: value });
+      }
+    }, 400);
   };
 
   return (

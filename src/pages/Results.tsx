@@ -27,6 +27,9 @@ export default function Results() {
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [savingPdf, setSavingPdf] = useState(false);
+  const [prospects, setProspects] = useState<any[]>([]);
+  const [isLoadingProspects, setIsLoadingProspects] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const resultsRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -132,6 +135,26 @@ export default function Results() {
       setError("Failed to generate PDF. Please try again.");
     } finally {
       setSavingPdf(false);
+    }
+  };
+
+  const handleFetchProspects = async () => {
+    setIsLoadingProspects(true);
+    try {
+      const res = await fetch('/api/net-to-seller/prospects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat: estimate.lat, lng: estimate.lng })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProspects(data.prospects);
+      }
+      setHasSearched(true);
+    } catch (err) {
+      console.error("Error fetching prospects:", err);
+    } finally {
+      setIsLoadingProspects(false);
     }
   };
 
@@ -336,6 +359,72 @@ export default function Results() {
               Order Marketing
             </WCTButton>
           </div>
+
+          {/* Neighborhood Prospector Section */}
+          {estimate.lat && estimate.lng && (
+            <div className="mt-12 pt-12 border-t border-[#A2B2C8]/10 max-w-3xl mx-auto">
+              <div className="text-center mb-8">
+                <h3 className="text-2xl font-bold text-[#004EA8] mb-2">Neighborhood Prospector</h3>
+                <p className="text-[#A2B2C8]">Would you like to see the 10 most likely sellers near this home?</p>
+              </div>
+
+              {!hasSearched ? (
+                <div className="flex justify-center">
+                  <WCTButton 
+                    onClick={handleFetchProspects} 
+                    disabled={isLoadingProspects}
+                  >
+                    {isLoadingProspects ? 'Searching...' : 'Show me'}
+                  </WCTButton>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {prospects.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-4">
+                      {prospects.map((prospect, idx) => (
+                        <motion.div 
+                          key={idx}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.05 }}
+                        >
+                          <WCTCard className="p-4 border border-[#A2B2C8]/20 hover:border-[#004EA8]/30 transition-colors">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-bold text-[#004EA8]">{prospect.ownerName}</p>
+                                  {idx < 3 && <span title="High probability lead">🔥</span>}
+                                </div>
+                                <p className="text-sm text-[#A2B2C8] mb-3">{prospect.address}</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {prospect.tags.map((tag: string, tIdx: number) => (
+                                    <span 
+                                      key={tIdx} 
+                                      className="px-2 py-1 bg-[#004EA8]/5 text-[#004EA8] text-[10px] font-bold uppercase tracking-wider rounded-md"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-[10px] font-bold text-[#A2B2C8] uppercase tracking-widest mb-1">Sell Score</div>
+                                <div className="text-xl font-bold text-[#004EA8]">{prospect.sellScore}</div>
+                              </div>
+                            </div>
+                          </WCTCard>
+                        </motion.div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-[#A2B2C8]/30">
+                      <p className="text-[#A2B2C8]">No high-probability prospects found in the immediate area.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {authSuccess && (
             <WCTAlert type="info">

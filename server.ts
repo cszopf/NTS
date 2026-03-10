@@ -488,6 +488,83 @@ async function startServer() {
     res.json(estimate);
   });
 
+  app.post("/api/net-to-seller/prospects", async (req, res) => {
+    const { lat, lng } = req.body;
+    const attomKey = process.env.ATTOM_API;
+
+    if (!attomKey || !lat || !lng) {
+      return res.json({ success: false, prospects: [] });
+    }
+
+    try {
+      const radiusUrl = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/snapshot?latitude=${lat}&longitude=${lng}&radius=1&pageSize=50`;
+      const response = await fetch(radiusUrl, {
+        headers: { apikey: attomKey, accept: 'application/json' }
+      });
+
+      if (!response.ok) {
+        return res.json({ success: false, prospects: [] });
+      }
+
+      const data = await response.json();
+      const properties = data.property || [];
+      console.log("ATTOM Sample Property:", JSON.stringify(data.property?.[0], null, 2));
+
+      const prospects = properties.map((p: any) => {
+        let sellScore = 0;
+        const tags: string[] = [];
+
+        // Check ownership duration (7+ years) - Try multiple possible date fields
+        const saleDateStr = p.sale?.amount?.salerecdate || p.sale?.saleTransDate || p.sale?.amount?.saleAmtDate;
+        if (saleDateStr) {
+          const saleDate = new Date(saleDateStr);
+          const sevenYearsAgo = new Date();
+          sevenYearsAgo.setFullYear(sevenYearsAgo.getFullYear() - 7);
+          if (saleDate < sevenYearsAgo && saleDate.getFullYear() > 1900) {
+            sellScore += 2;
+            tags.push("7+ Years Owned");
+          }
+        }
+
+        // Check absentee owner
+        if (p.summary?.absenteeInd === 'A' || p.summary?.absenteeind === 'A') {
+          sellScore += 2;
+          tags.push("Absentee Owner");
+        }
+
+        if (sellScore === 0 && tags.length === 0) {
+          tags.push("Nearby Home");
+        }
+
+        // Robust owner name parsing
+        const owner = p.assessment?.owner?.owner1 || p.assessment?.owner;
+        let ownerName = 'Unknown Owner';
+        
+        if (owner) {
+          if (owner.fullName) ownerName = owner.fullName;
+          else if (owner.fullname) ownerName = owner.fullname;
+          else if (owner.firstName && owner.lastName) ownerName = `${owner.firstName} ${owner.lastName}`;
+          else if (owner.firstname && owner.lastname) ownerName = `${owner.firstname} ${owner.lastname}`;
+          else if (owner.firstNameAndMi && owner.lastName) ownerName = `${owner.firstNameAndMi} ${owner.lastName}`;
+        }
+
+        return {
+          address: p.address?.oneLine || '',
+          ownerName: ownerName,
+          sellScore,
+          tags
+        };
+      })
+      .sort((a: any, b: any) => b.sellScore - a.sellScore)
+      .slice(0, 10);
+
+      res.json({ success: true, prospects });
+    } catch (error) {
+      console.error("Prospects API Error:", error);
+      res.json({ success: false, prospects: [] });
+    }
+  });
+
   // 5. Register User
   app.post("/api/register", (req, res) => {
     const { name, email, phone, brokerage, salesRep, estimateId } = req.body;
