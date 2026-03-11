@@ -330,6 +330,9 @@ export default function NetToSeller() {
       // Map priorPolicyAmount to priorSalePrice for backend compatibility
       (cleanData as any).priorSalePrice = (cleanData as any).priorPolicyAmount ? (cleanData as any).priorPolicyAmount.replace(/[^0-9.]/g, '') : '0';
       
+      // Map addressFull to address for backend logging
+      (cleanData as any).address = formData.addressFull;
+      
       // Add file name if present (we don't upload the file itself in this version)
       if (formData.priorPolicyFile) {
         (cleanData as any).priorPolicyFileName = formData.priorPolicyFile.name;
@@ -467,7 +470,7 @@ export default function NetToSeller() {
                   onChange={e => setFormData({...formData, salePrice: e.target.value})} 
                   onBlur={e => handleBlur('salePrice', e.target.value)}
                   required 
-                  className={Number(formData.salePrice.replace(/[^0-9.]/g, '')) >= 100000000 ? 'animate-shake border-amber-500' : ''}
+                  className={`${Number(formData.salePrice.replace(/[^0-9.]/g, '')) >= 100000000 ? 'animate-shake border-amber-500' : 'border-[#004EA8] bg-[#004EA8]/5 shadow-[0_0_0_4px_rgba(0,78,168,0.1)]'} transition-all`}
                 />
                 {Number(formData.salePrice.replace(/[^0-9.]/g, '')) >= 100000000 && (
                   <motion.div 
@@ -481,7 +484,13 @@ export default function NetToSeller() {
                 )}
                 {(formData.avmLow > 0 && formData.avmHigh > 0) ? (
                   <p className="text-[10px] text-emerald-600 font-bold -mt-3 pl-4 uppercase">
-                    AVM ESTIMATE ${Math.round(formData.avmLow / 1000)}k - ${Math.round(formData.avmHigh / 1000)}k
+                    AVM ESTIMATE {(() => {
+                      const formatPrice = (val: number) => {
+                        if (val >= 1000000) return `$${(val / 1000000).toFixed(1)}M`;
+                        return `$${Math.round(val / 1000)}k`;
+                      };
+                      return `${formatPrice(formData.avmHigh)} - ${formatPrice(formData.avmLow)}`;
+                    })()}
                   </p>
                 ) : formData.avmValue > 0 && (
                   <p className="text-[10px] text-emerald-600 font-bold -mt-3 pl-4 uppercase">

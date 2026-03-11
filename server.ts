@@ -4,9 +4,15 @@ import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WCT_CONFIG } from "./src/constants/config";
+import { createClient } from '@supabase/supabase-js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Prioritize supabase_nts_api as requested
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseKey = process.env.supabase_nts_api || process.env.SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const dbPath = process.env.DB_PATH || "nts.db";
 const db = new Database(dbPath);
@@ -418,6 +424,18 @@ async function startServer() {
     const scenario2 = calculateForPrice(cleanNum(inputs.salePrice2));
     const scenario3 = calculateForPrice(cleanNum(inputs.salePrice3));
 
+    // Stream search data to Supabase silently
+    if (supabaseUrl && supabaseKey) {
+      supabase.from('agent_searches').insert([{
+        searched_address: inputs.address || inputs.propertyAddress || inputs.addressFull || 'Unknown Address',
+        sale_price: cleanNum(inputs.salePrice) || 0,
+        net_to_seller: primary?.netProceeds || 0
+      }]).then(({ error }) => {
+        if (error) console.error('Supabase Search Log Error:', error.message);
+        else console.log('Successfully logged agent search to Supabase.');
+      });
+    }
+
     // Legacy response format for primary + scenarios array
     res.json({
       ...primary,
@@ -584,19 +602,63 @@ async function startServer() {
           tags.push("Tax Delinquent");
         }
 
+        // Estimated Value Range Calculation
+        let estimatedValueRange = 'Est. Value Unknown';
+        const estimatedValue = p.assessment?.market?.mktTtlValue || p.assessment?.assessed?.assdTtlValue;
+        
+        if (estimatedValue) {
+          const low = estimatedValue * 0.95;
+          const high = estimatedValue * 1.05;
+          
+          const formatPrice = (val: number) => {
+            if (val >= 1000000) {
+              return `$${(val / 1000000).toFixed(1)}M`;
+            }
+            return `$${Math.round(val / 1000)}k`;
+          };
+
+          // User requested High - Low format: $1.7M - $1.4M
+          estimatedValueRange = `Est. Value ${formatPrice(high)} - ${formatPrice(low)}`;
+        }
+
         return {
-          address: p.address?.oneLine || '',
+          address: {
+            oneLine: p.address?.oneLine || '',
+            line1: p.address?.line1 || '',
+            locality: p.address?.locality || '',
+            countrySubd: p.address?.stateIndicator || '',
+            postal1: p.address?.postalMemberCode || ''
+          },
           mailingAddress: p.assessment?.owner?.mailingAddress?.oneLine || '',
           ownerName: ownerName,
           sellScore,
-          tags
+          tags,
+          estimatedValueRange
         };
-      })
+      });
+
+      const top15 = prospects
       .filter((p: any) => p.sellScore > 0)
       .sort((a: any, b: any) => b.sellScore - a.sellScore)
       .slice(0, 15);
 
-      res.json({ success: true, prospects });
+      // Stream data to Supabase silently
+      const leadsToInsert = top15.map((p: any) => ({
+        owner_name: p.ownerName || 'Unknown',
+        property_address: p.address?.oneLine || p.address?.line1 || 'Unknown Address',
+        sell_score: p.sellScore || 0,
+        tags: p.tags ? p.tags.join(', ') : ''
+      }));
+
+      if (leadsToInsert.length > 0 && supabaseUrl && supabaseKey) {
+        // Silently insert into Supabase without awaiting, so we don't slow down the user's UI
+        supabase.from('prospect_leads').insert(leadsToInsert).then(({ error }) => {
+          if (error) console.error('Supabase Insert Error:', error.message);
+          else console.log(`Successfully logged ${leadsToInsert.length} leads to Supabase.`);
+        });
+      }
+
+      res.json({ success: true, prospects: top15 });
     } catch (error: any) {
       console.error("Prospects API Error:", error);
       res.status(500).json({ 
@@ -635,6 +697,94 @@ async function startServer() {
     } catch (err: any) {
       console.error("Registration error:", err);
       res.status(500).json({ error: "Failed to register user" });
+    }
+  });
+
+  // BatchData Skip Trace Endpoint
+  app.post('/api/net-to-seller/skiptrace', async (req, res) => {
+    const { prospects } = req.body;
+    const batchDataKey = process.env.BATCHDATA_API_KEY;
+
+    if (!batchDataKey) {
+      return res.status(500).json({ success: false, error: "BatchData API Key not configured" });
+    }
+
+    try {
+      // 1. Map and sanitize the addresses to guarantee strings
+      const batchRequests = prospects
+        .map((p: any) => ({
+          propertyAddress: {
+            street: String(p.address?.line1 || p.street || p.propertyAddress || '').trim(),
+            city: String(p.address?.locality || p.city || '').trim(),
+            state: String(p.address?.countrySubd || p.state || '').trim(),
+            zip: String(p.address?.postal1 || p.zip || '').trim().substring(0, 5)
+          }
+        }))
+        .filter((req: any) => req.propertyAddress.street && req.propertyAddress.city && req.propertyAddress.state && req.propertyAddress.zip);
+
+      if (batchRequests.length === 0) {
+        return res.status(400).json({ success: false, errorDetail: 'No valid addresses found in the payload.' });
+      }
+
+      const requestBody = {
+        requests: batchRequests
+      };
+
+      // 2. CRITICAL DEBUG LOG: Print exactly what we are sending
+      console.log('SENDING TO BATCHDATA:', JSON.stringify(requestBody, null, 2));
+
+      // 3. Execute the fetch
+      const batchResponse = await fetch('https://api.batchdata.com/api/v1/property/skip-trace', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${process.env.BATCHDATA_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!batchResponse.ok) {
+        const errorText = await batchResponse.text();
+        console.error('BATCHDATA ERROR:', errorText);
+        // CRITICAL: Return the exact requestBody string inside the errorDetail so it renders on the UI
+        return res.status(400).json({ 
+          success: false, 
+          errorDetail: `BatchData Error: ${errorText} | PAYLOAD SENT: ${JSON.stringify(requestBody)}` 
+        });
+      }
+
+      const batchData = await batchResponse.json();
+      
+      // 5. Safely merge the results back into the prospects
+      // Note: batchData.results array matches the order of batchRequests.
+      let validIdx = 0;
+      const enrichedProspects = prospects.map((p: any) => {
+        const street = String(p.address?.line1 || p.street || p.propertyAddress || '').trim();
+        const city = String(p.address?.locality || p.city || '').trim();
+        const state = String(p.address?.countrySubd || p.state || '').trim();
+        const zip = String(p.address?.postal1 || p.zip || '').trim().substring(0, 5);
+        
+        const isValid = street && city && state && zip;
+        
+        if (isValid) {
+          const person = batchData.results?.[validIdx]?.persons?.[0];
+          validIdx++;
+          if (person) {
+            return {
+              ...p,
+              phoneNumbers: person.phoneNumbers || [],
+              emails: person.emails || []
+            };
+          }
+        }
+        return p;
+      });
+
+      res.json({ success: true, prospects: enrichedProspects });
+    } catch (error: any) {
+      console.error("Skip Trace API Error:", error);
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 

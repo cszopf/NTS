@@ -29,9 +29,31 @@ export default function Results() {
   const [savingPdf, setSavingPdf] = useState(false);
   const [prospects, setProspects] = useState<any[]>([]);
   const [isLoadingProspects, setIsLoadingProspects] = useState(false);
+  const [isTracing, setIsTracing] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [prospectsError, setProspectsError] = useState<string | null>(null);
+  const [thinkingStep, setThinkingStep] = useState(0);
   const resultsRef = React.useRef<HTMLDivElement>(null);
+
+  const thinkingMessages = [
+    "Analyzing neighborhood turnover...",
+    "Scanning county tax records...",
+    "Calculating sell probability scores...",
+    "Identifying high-equity owners...",
+    "Finalizing top 10 prospects..."
+  ];
+
+  useEffect(() => {
+    let interval: any;
+    if (isLoadingProspects) {
+      interval = setInterval(() => {
+        setThinkingStep(prev => (prev + 1) % thinkingMessages.length);
+      }, 2000);
+    } else {
+      setThinkingStep(0);
+    }
+    return () => clearInterval(interval);
+  }, [isLoadingProspects]);
 
   useEffect(() => {
     const fetchEstimate = async () => {
@@ -163,25 +185,66 @@ export default function Results() {
     }
   };
 
+  const handleSkipTrace = async () => {
+    if (!prospects || prospects.length === 0) return;
+    setIsTracing(true);
+    setProspectsError(null);
+    try {
+      const response = await fetch('/api/net-to-seller/skiptrace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prospects })
+      });
+      
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        // Strictly set the UI error state to the detailed backend message
+        setProspectsError(data.errorDetail || 'Skip trace failed: No detailed error provided.');
+        setIsTracing(false);
+        return;
+      }
+
+      setProspects(data.prospects);
+    } catch (err: any) {
+      console.error("Skip trace error:", err);
+      setProspectsError(err.message);
+    } finally {
+      setIsTracing(false);
+    }
+  };
+
   const handleDownloadCSV = () => {
     if (!prospects || prospects.length === 0) return;
 
-    const headers = ["Owner Name", "Property Address", "Sell Score", "Tags"];
+    const headers = ["Owner Name", "Property Address", "Est. Value Range", "Sell Score", "Tags"];
     // Check if mailingAddress exists in any prospect to decide if we add the header
     const hasMailing = prospects.some(p => p.mailingAddress);
     if (hasMailing) headers.push("Mailing Address");
+
+    // Add Skip Trace columns
+    const hasContactInfo = prospects.some(p => (p.phoneNumbers && p.phoneNumbers.length > 0) || (p.emails && p.emails.length > 0));
+    if (hasContactInfo) {
+      headers.push("Phone 1", "Phone 2", "Email");
+    }
 
     const csvRows = [
       headers.join(","),
       ...prospects.map(p => {
         const row = [
           `"${p.ownerName.replace(/"/g, '""')}"`,
-          `"${p.address.replace(/"/g, '""')}"`,
+          `"${p.address.oneLine.replace(/"/g, '""')}"`,
+          `"${p.estimatedValueRange}"`,
           p.sellScore,
           `"${p.tags.join("; ")}"`
         ];
         if (hasMailing) {
           row.push(`"${(p.mailingAddress || "").replace(/"/g, '""')}"`);
+        }
+        if (hasContactInfo) {
+          const phone1 = p.phoneNumbers?.[0]?.phoneNumber || "";
+          const phone2 = p.phoneNumbers?.[1]?.phoneNumber || "";
+          const email = p.emails?.[0]?.email || "";
+          row.push(`"${phone1}"`, `"${phone2}"`, `"${email}"`);
         }
         return row.join(",");
       })
@@ -410,13 +473,35 @@ export default function Results() {
               </div>
 
               {!hasSearched ? (
-                <div className="flex justify-center">
-                  <WCTButton 
-                    onClick={handleFetchProspects} 
-                    disabled={isLoadingProspects}
-                  >
-                    {isLoadingProspects ? 'Searching...' : 'Show me'}
-                  </WCTButton>
+                <div className="flex flex-col items-center justify-center min-h-[200px]">
+                  {isLoadingProspects ? (
+                    <div className="text-center">
+                      <motion.div 
+                        animate={{ rotate: 360 }}
+                        transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                        className="w-12 h-12 border-4 border-[#004EA8]/10 border-t-[#004EA8] rounded-full mx-auto mb-6"
+                      />
+                      <AnimatePresence mode="wait">
+                        <motion.p 
+                          key={thinkingStep}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="text-[#004EA8] font-bold text-lg"
+                        >
+                          {thinkingMessages[thinkingStep]}
+                        </motion.p>
+                      </AnimatePresence>
+                      <p className="text-[#A2B2C8] text-sm mt-2">This usually takes about 10-15 seconds</p>
+                    </div>
+                  ) : (
+                    <WCTButton 
+                      onClick={handleFetchProspects} 
+                      disabled={isLoadingProspects}
+                    >
+                      Show me
+                    </WCTButton>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -431,14 +516,25 @@ export default function Results() {
                         <p className="text-sm font-bold text-[#004EA8] uppercase tracking-widest">
                           {prospects.length} Qualified Leads Found
                         </p>
-                        <WCTButton 
-                          variant="outline" 
-                          onClick={handleDownloadCSV}
-                          className="flex items-center gap-2 px-4 py-2 text-xs"
-                        >
-                          <Download className="w-4 h-4" />
-                          Download Leads (CSV)
-                        </WCTButton>
+                        <div className="flex gap-2">
+                          <WCTButton 
+                            variant="secondary" 
+                            onClick={handleSkipTrace}
+                            disabled={isTracing}
+                            className="flex items-center gap-2 px-4 py-2 text-xs"
+                          >
+                            {isTracing ? <Sparkles className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                            {isTracing ? 'Tracing...' : 'Unlock Contact Info'}
+                          </WCTButton>
+                          <WCTButton 
+                            variant="outline" 
+                            onClick={handleDownloadCSV}
+                            className="flex items-center gap-2 px-4 py-2 text-xs"
+                          >
+                            <Download className="w-4 h-4" />
+                            Download Leads (CSV)
+                          </WCTButton>
+                        </div>
                       </div>
                       
                       <div className="grid grid-cols-1 gap-4">
@@ -456,7 +552,26 @@ export default function Results() {
                                   <p className="font-bold text-[#004EA8]">{prospect.ownerName}</p>
                                   {idx < 3 && <span title="High probability lead">🔥</span>}
                                 </div>
-                                <p className="text-sm text-[#A2B2C8] mb-3">{prospect.address}</p>
+                                
+                                {(prospect.phoneNumbers?.length > 0 || prospect.emails?.length > 0) && (
+                                  <div className="mb-2 space-y-1">
+                                    {prospect.phoneNumbers?.slice(0, 2).map((ph: any, pIdx: number) => (
+                                      <div key={pIdx} className="flex items-center gap-2 text-xs text-green-600 font-medium">
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        {ph.phoneNumber} {ph.type ? `(${ph.type})` : ''}
+                                      </div>
+                                    ))}
+                                    {prospect.emails?.[0] && (
+                                      <div className="flex items-center gap-2 text-xs text-[#004EA8] font-medium">
+                                        <Mail className="w-3 h-3" />
+                                        {prospect.emails[0].email}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                <p className="text-sm text-[#A2B2C8] mb-1">{prospect.address.oneLine}</p>
+                                <p className="text-sm text-gray-500 font-medium mb-3">{prospect.estimatedValueRange}</p>
                                 <div className="flex flex-wrap gap-2">
                                   {prospect.tags.map((tag: string, tIdx: number) => (
                                     <span 
