@@ -10,7 +10,7 @@ import { AuthModal } from '../components/AuthModal';
 import { SmartTechModal } from '../components/SmartTechModal';
 import { GeminiAssistant } from '../components/GeminiAssistant';
 import { motion, AnimatePresence } from 'motion/react';
-import { Share2, Mail, Edit2, CheckCircle2, FileDown, Sparkles, Download, Shield } from 'lucide-react';
+import { Share2, Mail, Edit2, CheckCircle2, FileDown, Sparkles, Download, Shield, AlertTriangle, RefreshCw } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { domToCanvas } from 'modern-screenshot';
 import jsPDF from 'jspdf';
@@ -506,9 +506,21 @@ export default function Results() {
               ) : (
                 <div className="space-y-4">
                   {prospectsError ? (
-                    <div className="bg-red-50 border border-red-200 p-4 rounded-lg text-center">
-                      <p className="text-red-600 font-bold mb-1">Error Fetching Prospects</p>
-                      <p className="text-red-500 text-sm">{prospectsError}</p>
+                    <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-center flex flex-col items-center gap-3">
+                      <AlertTriangle className="w-8 h-8 text-red-500" />
+                      <h3 className="text-red-800 font-semibold">Database Connection Error</h3>
+                      <p className="text-red-600 text-sm">
+                        {prospectsError.includes('504') || prospectsError.includes('Time-out') 
+                          ? "The property database took too long to respond due to heavy network traffic." 
+                          : "We encountered an issue pulling the neighborhood data. Please try again."}
+                      </p>
+                      <button 
+                        onClick={handleFetchProspects}
+                        className="mt-2 flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        Try Again
+                      </button>
                     </div>
                   ) : prospects.length > 0 ? (
                     <div className="space-y-6">
