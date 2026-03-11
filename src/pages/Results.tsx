@@ -467,13 +467,13 @@ export default function Results() {
           {/* Neighborhood Prospector Section */}
           {estimate.lat && estimate.lng && (
             <div className="mt-12 pt-12 border-t border-[#A2B2C8]/10 max-w-3xl mx-auto">
-              <div className="text-center mb-8">
-                <h3 className="text-2xl font-bold text-[#004EA8] mb-2">Neighborhood Prospector</h3>
+              <div className="text-center mb-4">
+                <h3 className="text-2xl font-bold text-[#004EA8] mb-1">Neighborhood Prospector</h3>
                 <p className="text-[#A2B2C8]">Would you like to see the 10 most likely sellers near this home?</p>
               </div>
 
               {!hasSearched ? (
-                <div className="flex flex-col items-center justify-center min-h-[200px]">
+                <div className="flex flex-col items-center justify-center min-h-[100px]">
                   {isLoadingProspects ? (
                     <div className="text-center">
                       <motion.div 
@@ -555,18 +555,25 @@ export default function Results() {
                                 
                                 {(prospect.phoneNumbers?.length > 0 || prospect.emails?.length > 0) && (
                                   <div className="mb-2 space-y-1">
-                                    {prospect.phoneNumbers?.slice(0, 2).map((ph: any, pIdx: number) => (
-                                      <div key={pIdx} className="flex items-center gap-2 text-xs text-green-600 font-medium">
-                                        <CheckCircle2 className="w-3 h-3" />
-                                        {ph.phoneNumber} {ph.type ? `(${ph.type})` : ''}
-                                      </div>
-                                    ))}
-                                    {prospect.emails?.[0] && (
-                                      <div className="flex items-center gap-2 text-xs text-[#004EA8] font-medium">
-                                        <Mail className="w-3 h-3" />
-                                        {prospect.emails[0].email}
-                                      </div>
-                                    )}
+                                    {prospect.phoneNumbers?.slice(0, 2).map((phone: any, idx: number) => {
+                                      const numberString = phone.number || phone.phone || (typeof phone === 'string' ? phone : null);
+                                      const phoneType = phone.type || 'Phone';
+                                      return numberString ? (
+                                        <div key={idx} className="flex items-center gap-2 text-xs text-green-600 font-medium">
+                                          <CheckCircle2 className="w-3 h-3" />
+                                          <span>({phoneType}) {numberString}</span>
+                                        </div>
+                                      ) : null;
+                                    })}
+                                    {prospect.emails?.slice(0, 2).map((emailObj: any, idx: number) => {
+                                      const emailString = emailObj.email || (typeof emailObj === 'string' ? emailObj : null);
+                                      return emailString ? (
+                                        <div key={idx} className="flex items-center gap-2 text-xs text-[#004EA8] font-medium">
+                                          <Mail className="w-3 h-3" />
+                                          <span>{emailString}</span>
+                                        </div>
+                                      ) : null;
+                                    })}
                                   </div>
                                 )}
 

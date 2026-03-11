@@ -489,7 +489,7 @@ export default function NetToSeller() {
                         if (val >= 1000000) return `$${(val / 1000000).toFixed(1)}M`;
                         return `$${Math.round(val / 1000)}k`;
                       };
-                      return `${formatPrice(formData.avmHigh)} - ${formatPrice(formData.avmLow)}`;
+                      return `${formatPrice(formData.avmLow)} - ${formatPrice(formData.avmHigh)}`;
                     })()}
                   </p>
                 ) : formData.avmValue > 0 && (

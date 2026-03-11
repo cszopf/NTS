@@ -617,8 +617,8 @@ async function startServer() {
             return `$${Math.round(val / 1000)}k`;
           };
 
-          // User requested High - Low format: $1.7M - $1.4M
-          estimatedValueRange = `Est. Value ${formatPrice(high)} - ${formatPrice(low)}`;
+          // User requested Low - High format: $1.4M - $1.7M
+          estimatedValueRange = `Est. Value ${formatPrice(low)} - ${formatPrice(high)}`;
         }
 
         return {
@@ -710,30 +710,45 @@ async function startServer() {
     }
 
     try {
-      // 1. Map and sanitize the addresses to guarantee strings
-      const batchRequests = prospects
-        .map((p: any) => ({
-          propertyAddress: {
-            street: String(p.address?.line1 || p.street || p.propertyAddress || '').trim(),
-            city: String(p.address?.locality || p.city || '').trim(),
-            state: String(p.address?.countrySubd || p.state || '').trim(),
-            zip: String(p.address?.postal1 || p.zip || '').trim().substring(0, 5)
-          }
-        }))
-        .filter((req: any) => req.propertyAddress.street && req.propertyAddress.city && req.propertyAddress.state && req.propertyAddress.zip);
-
-      if (batchRequests.length === 0) {
-        return res.status(400).json({ success: false, errorDetail: 'No valid addresses found in the payload.' });
+      if (!req.body.prospects || req.body.prospects.length === 0) {
+        return res.status(400).json({ success: false, errorDetail: 'Payload is missing the prospects array.' });
       }
 
-      const requestBody = {
-        requests: batchRequests
-      };
+      // 1. Map and aggressively parse the address data
+      const batchRequests = req.body.prospects.map((p: any) => {
+        let state = p.address?.countrySubd || p.state || '';
+        let zip = p.address?.postal1 || p.zip || '';
 
-      // 2. CRITICAL DEBUG LOG: Print exactly what we are sending
-      console.log('SENDING TO BATCHDATA:', JSON.stringify(requestBody, null, 2));
+        // Fallback: Parse from oneLine if state or zip are missing
+        if ((!state || !zip) && p.address?.oneLine) {
+          const parts = p.address.oneLine.split(',');
+          const lastPart = parts[parts.length - 1].trim(); // e.g., "OH 43207"
+          const stateZip = lastPart.split(' ');
+          if (stateZip.length >= 2) {
+            state = state || stateZip[0]; // "OH"
+            zip = zip || stateZip[stateZip.length - 1]; // "43207"
+          }
+        }
 
-      // 3. Execute the fetch
+        const cleanZip = String(zip).split('-')[0].trim().substring(0, 5);
+
+        return {
+          propertyAddress: {
+            street: String(p.address?.line1 || p.street || '').trim(),
+            city: String(p.address?.locality || p.city || '').trim(),
+            state: String(state).trim(),
+            zip: cleanZip
+          }
+        };
+      }).filter((req: any) => req.propertyAddress.street && req.propertyAddress.city && req.propertyAddress.state && req.propertyAddress.zip);
+
+      if (batchRequests.length === 0) {
+        return res.status(400).json({ success: false, errorDetail: 'No valid addresses found after parsing.' });
+      }
+
+      // 2. Fetch from BatchData
+      const requestBody = { requests: batchRequests };
+
       const batchResponse = await fetch('https://api.batchdata.com/api/v1/property/skip-trace', {
         method: 'POST',
         headers: {
@@ -746,42 +761,38 @@ async function startServer() {
 
       if (!batchResponse.ok) {
         const errorText = await batchResponse.text();
-        console.error('BATCHDATA ERROR:', errorText);
-        // CRITICAL: Return the exact requestBody string inside the errorDetail so it renders on the UI
-        return res.status(400).json({ 
-          success: false, 
-          errorDetail: `BatchData Error: ${errorText} | PAYLOAD SENT: ${JSON.stringify(requestBody)}` 
-        });
+        return res.status(400).json({ success: false, errorDetail: 'BatchData Error: ' + errorText });
       }
 
       const batchData = await batchResponse.json();
-      
-      // 5. Safely merge the results back into the prospects
-      // Note: batchData.results array matches the order of batchRequests.
-      let validIdx = 0;
-      const enrichedProspects = prospects.map((p: any) => {
-        const street = String(p.address?.line1 || p.street || p.propertyAddress || '').trim();
-        const city = String(p.address?.locality || p.city || '').trim();
-        const state = String(p.address?.countrySubd || p.state || '').trim();
-        const zip = String(p.address?.postal1 || p.zip || '').trim().substring(0, 5);
-        
-        const isValid = street && city && state && zip;
-        
-        if (isValid) {
-          const person = batchData.results?.[validIdx]?.persons?.[0];
-          validIdx++;
-          if (person) {
-            return {
-              ...p,
-              phoneNumbers: person.phoneNumbers || [],
-              emails: person.emails || []
+
+      // 3. Merge back based on street address
+      const enrichedProspects = req.body.prospects.map((prospect: any) => {
+        // Find where this property was placed in our filtered request array
+        const reqIndex = batchRequests.findIndex((req: any) => {
+          const reqStreet = req.propertyAddress.street.toLowerCase();
+          const pStreet = String(prospect.address?.line1 || prospect.street || '').trim().toLowerCase();
+          return reqStreet === pStreet;
+        });
+
+        // If we sent it to BatchData, extract the corresponding result
+        if (reqIndex !== -1 && batchData.results && Array.isArray(batchData.results.persons)) {
+          // STRICT MATCHING: Remove the || fallback. Only use the exact matched index.
+          const personData = batchData.results.persons[reqIndex];
+
+          if (personData) {
+            return { 
+              ...prospect, 
+              phoneNumbers: personData.phoneNumbers || [], 
+              emails: personData.emails || [] 
             };
           }
         }
-        return p;
+        
+        return prospect;
       });
 
-      res.json({ success: true, prospects: enrichedProspects });
+      return res.json({ success: true, prospects: enrichedProspects });
     } catch (error: any) {
       console.error("Skip Trace API Error:", error);
       res.status(500).json({ success: false, error: error.message });
